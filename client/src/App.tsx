@@ -251,9 +251,9 @@ const PlayerView = () => {
           // Dynamic Timer based on Mind Stat
           // Mind 1: 3.0s | Mind 2-3: 4.0s | Mind 4+: 5.5s
           let startingTime = 3000;
-          if (updatedMe) {
-             if (updatedMe.mind >= 4) startingTime = 5500;
-             else if (updatedMe.mind >= 2) startingTime = 4000;
+          if (character) {
+             if (character.mind >= 4) startingTime = 5500;
+             else if (character.mind >= 2) startingTime = 4000;
           }
           
           setWarningState(null);
