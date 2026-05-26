@@ -1,0 +1,111 @@
+OVERDRIVE: Game Design Document (Phase 1)
+Product Concept: An asymmetric local multiplayer, rules-lite cyberpunk tabletop RPG where narrative actions are resolved through frantic, 3-to-5-second smartphone micro-games. The experience combines the collaborative storytelling of a human Game Master (GM) with the party-game energy of WarioWare and the seamless accessibility of Jackbox systems.
+Target Platforms: Dual-screen architecture consisting of a centralized TV/Monitor host application (the public screen) and specialized smartphone web-app interfaces for individual players (the personal Cyber-Decks) and the GM (the Master Control Deck).
+1. Rules-Lite RPG Core Engine
+1.1 Core Attributes
+Traditional roleplaying math, mathematical modifiers, and polyhedral dice pools are eliminated to maintain a breakneck party pace. Characters are defined by three distinct attributes rated on a scale from 1 (Amateur) to 5 (Legendary):
+Meat: Governs physical power, brawling, vehicle handling, acrobatics, and twitch physical reflexes.
+Mind: Governs network hacking, hardware engineering, electronic warfare, tactical observation, and medical analysis.
+Moxie: Governs social manipulation, fast-talking, intimidation, performance, deception, and psychological grit.
+1.2 Skill vs. Stat Intersection
+A player's physical reflexes determine actual in-game success, but the character's stats alter the physical parameters, timing windows, and constraints of the micro-games delivered to their smartphone:
+Stat Rating
+Difficulty Tier
+Micro-Game UI Modification
+ 
+1
+Amateur (Hard Mode)
+Strict 3-second timer, tightest collision hitboxes, maximal obstacle layout.
+2-3
+Professional (Standard)
+Standard 4-second timer, baseline success hitboxes.
+4
+Elite
+Time Dilator active: Grants +1.5 additional seconds to complete the objective.
+5
+Legendary
+Buffer Tech active: The first structural mistake or missed tap is automatically forgiven.
+1.3 Health and Status Degradation
+System Integrity: Characters maintain 3 Core Blocks of health. Failing a micro-game during dangerous or hostile encounters shatters 1 block. Reaching 0 blocks puts the character into an unconscious state.
+Screen Glitches: Status effects manifest as real physical handicaps rendered on the player's smartphone screen. Taking damage or failing certain network maneuvers injects persistent handicaps such as visual static/flicker, inverted touch directions, or deliberate input registration delays into subsequent micro-games.
+2. Action-to-Minigame Mapping
+Narrative declarations made by the player are parsed by the GM and executed through rapid micro-game paradigms:
+Narrative Action Class
+Stat
+Screen Command
+UI & Mechanics Protocol
+ 
+ICE Breaking / Node Hack
+Mind
+ROUTE!
+Node Breach: Trace a continuous unbroken path from a starting node to a terminal node on a grid without hitting firewall barriers.
+Encryption Bypass
+Mind
+ISOLATE!
+Encryption Scan: A large hex sequence header is displayed. The player must scan a flashing 3x3 array of codes and tap the exact match.
+Vehicular Chase / Evasion
+Meat
+THREAD!
+Getaway: Top-down running vector view. Blast shields and obstructions slide shut vertically. Swipe rapidly left and right to navigate through the gaps.
+Overload / Counter-Measure
+Mind
+SPAM!
+Overload: Pure speed test. Button-mash a giant red terminal icon a target number of times (e.g., 15 taps in 3 seconds) to crash an asset.
+Melee Defensive Parry
+Meat
+DEFLECT!
+The Block: Concentric neon vector arcs close inwards on a player silhouette. Tap the screen precisely when the arc interfaces with the green zone.
+Social Bluff / Resolution
+Moxie
+INTERRUPT!
+Sonic Intercept: An active audio waveform scrolls across the display. The user must tap exactly inside brief physical gaps in the waveform to fit their line in.
+3. Combat Loop & Tactical Systems
+3.1 Interactive Weapon Profiles
+Weapons determine the precise tactile style of the smartphone screen input, transforming different equipment into unique mechanical sensory loops:
+Shotguns & Heavy Railguns (Hold & Release): A vertical kinetic power-meter charges and discharges cyclically at extreme velocity. The player must press, hold, and release their thumb perfectly at peak capacity.
+SMGs & Smart Pistols (Continuous Tracking): A small high-frequency target dot maneuvers fluidly across the device layout. The player must hold their finger down on top of the dot, maintaining tracking integrity as it travels.
+Katanas & Monowires (Vector Slicing): Neon slash lines blink across the screen in geometric vectors. The player must accurately swipe along the specified orientation lines in rapid succession.
+Unarmed & Cybernetic Fists (The Combo String): The interface divides vertically into two large panels: [LEFT] and [RIGHT]. Prompt blocks drop downward, requiring the player to tap alternating sides in precise rhythmical structures (e.g., Left-Right-Left-Left-Right) without dropping the chain.
+3.2 Defensive Armor Matrix
+Opposing protective systems alter the visual environment of the attack micro-game, adding layers of tactical complexity without injecting traditional damage reduction math:
+Kevlar / Flak Vest (The Armor Plate): Superimposes a physical gray barrier layer across the screen. The user must execute a unified double-thumb slam to "shatter" the protective plate before their standard weapon input layout activates.
+Deflector Shields (Decoy Matrix): Duplicates the native weapon targets, spawning up to 3 identical, false moving elements. Registering an input on an illusionary asset instantly voids the timer, triggering a catastrophic failure.
+Subdermal Plating (The Shrink): Condenses all valid hitboxes, targets, or slice vectors by 50% scale, testing strict physical accuracy.
+3.3 Real-Time Initiative: The Flash-Draw
+At the onset of combat, the main TV host screen dims, broadcasting a structural heartbeat sound effect. All player mobile phones turn solid red, reading: READY...
+At a randomized millisecond boundary, the TV transitions to neon green, flashing: DRAW! Every player reacts immediately. The engine records response latencies down to the millisecond, calculating an immediate turn timeline displayed publicly on the TV.
+Enemies populate this timeline automatically based on pre-set architectural latency thresholds relative to the human inputs:
+Ambush / Glitched Tier (900ms+): Shambling hostiles or rebooting mechanical components. Almost universally slotted last.
+Heavy Tier (450ms): Massive armored exo-suits or heavily weighted defense platforms. Consistently intercept slower or distracted players.
+Standard Tier (300ms): Baseline line-security personnel and street gangers. Populate the intermediate core of the round.
+Elite Spec-Ops Tier (180ms): High-tier augmented corporate operators and specialized cyber-hounds. Difficult to out-react without mechanical assistance.
+Cyber-Ninja / Boss Tier (100ms): Legendary encounters. Hardcoded to claim initiative precedence unless targeted by specialized interrupting software or player perks.
+3.4 Abstract Spatial Ranges: Position Zones
+Tactical space is separated into three fluid environmental zones. Movement between zones is narrative; however, moving through hazardous space forces a "Getaway" or "Stealth" micro-game to prevent intercept damage:
+The Fray: Immediate proximity. Restricts heavy network hacking or long-range sniping weapons. Valid for Unarmed, Katanas, and Shotguns. Maximum personal exposure.
+Cover: Standard defensive positioning behind physical infrastructure. Valid for SMGs, Smart Pistols, Shotguns, and baseline system hacking.
+Overwatch: Distant or elevated parameters. Completely immune to melee engagement paths. Optimal for Railguns, Sniper Rifles, and complex software-based operations.
+4. Narrative Social Puzzles & Hardware Sensor Operations
+4.1 The Dossier Hack (Asymmetric Social Play)
+Major narrative non-player character interaction is decoupled from reflex mini-games, operating as a 20-second asymmetric logic challenge split between the squad:
+The Actor (Active Player): Device populates with a matrix of active negotiation tactics (e.g., Flattery, Financial Bribery, Direct Blackmail, Logical Breakdown).
+The Crew (Support Players): Devices rapidly switch into diagnostic biometric sensor suites. They receive secret text streams describing target psychological shifts (e.g., "Target pulse dropped upon blackmail mention - threat ineffective" or "Pupillary dilation detected under financial vectors").
+Execution: The crew must verbally communicate biometric insights to the active player in real-time. The active player inputs the requested array of social tactics on their screen to systematically erode the NPC's psychological defenses before the master clock runs out.
+4.2 Environmental Event Games (Hardware Integration)
+Special high-immersion environmental challenges leverage physical components inside modern smartphones. These are reserved as major scenario gates managed by the GM:
+The Gyroscope (Tilt Calibration): Used for long-range target alignment or stabilization of volatile cores. Displays a fluid physics vector level; players must tilt their physical device to keep an erratic indicator perfectly centered for 1.5 continuous seconds.
+The Haptic Motor (Blind Vault Crack): Used for pitch-black hotwiring or lockpicking. Screen rendering blackouts entirely, displaying only a rotary security dial. The user revolves the dial via touchscreen interface, monitoring internal vibration clicks. They must release the dial only when feeling a distinct, structural double-buzz pattern.
+Multi-Touch (Pressure Leverage): Used for structural lifting, forcing jammed pneumatic hatches, or precise medical sutures. Requires simultaneous twin-finger anchoring and steady mechanical sliding against an onscreen resistance bar.
+5. Progression & Session Structures
+5.1 Classless Archetype Templates
+Character creation is classless, offering immediate modular loadout templates to streamline deployment for new players:
+The Street-Sam (Meat Focus): Meat 4, Mind 2, Moxie 1. Equipped with Subdermal Shock-Gloves (duplicates tap metrics inside Unarmed Combo strings) and Bodyguard Protocol software (allows the character to link and intercept failure damage for adjacent allies).
+The Cyber-Glitch (Mind Focus): Meat 1, Mind 4, Moxie 2. Equipped with a Signal Booster antenna (+1.5 seconds on all Hacking actions) and Deep-Scan Ping software (automatically surfaces one hidden NPC psychological flaw on their phone during Dossier Hacks).
+The Operator (Moxie Focus): Meat 2, Mind 1, Moxie 4. Equipped with an Audio-Synthesizer Implant (widens target success regions by 25% during Sonic Intercepts) and Rallying Cry software (once per challenge, purges a screen-obscuring "Glitch" from a squad mate's phone).
+5.2 Session Resolution & Post-Game Economy
+Upon contract completion, the GM distributes Credits (฿) and Data-Shards. The public TV screen transitions into the Black Net Market interface. Players spend their credits directly from their devices to purchase high-tier hardware upgrades and specialized software modifications, installing new UI behavior configurations, success parameters, or ability behaviors onto their classless profile for subsequent missions.
+6. System Pacing Dynamics
+6.1 Turn Archetype Alpha: The Spotlight
+A single player executes their declared move. The central TV screen broadcasts their mobile view live to the room, focusing the attention of the couch on their immediate execution, driving maximum spectatorship and verbal support.
+6.2 Turn Archetype Omega: System Overdrive
+Triggered during massive crises (e.g., escaping facility self-destruction, avoiding orbital bombardments). All player mobile screens light up concurrently with random, rapid micro-games. The host TV maps a unified catastrophe progress bar. Players must collaboratively input continuous micro-game victories to fill the survival meter before a global master timer runs down to zero.
