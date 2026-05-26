@@ -353,9 +353,23 @@ const PlayerView = () => {
       <div className="flex flex-col items-center p-6 min-h-screen">
         <div className="w-full max-w-md border-b-2 border-fuchsia-500 pb-4 mb-6">
           <h1 className="text-3xl font-bold">{character?.name}</h1>
-          <div className="flex justify-between mt-2 text-sm text-fuchsia-300">
+          <div className="flex justify-between mt-2 text-sm text-fuchsia-300 mb-4">
             <span>SYS INTEGRITY: {character?.health}/3</span>
             <span>CREDITS: ฿{character?.credits}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-xs text-center">
+            <div className="bg-slate-900 p-2 rounded border border-slate-700">
+              <div className="text-slate-400">MEAT</div>
+              <div className="font-bold text-lg text-white">{character?.meat}</div>
+            </div>
+            <div className="bg-slate-900 p-2 rounded border border-slate-700">
+              <div className="text-slate-400">MIND</div>
+              <div className="font-bold text-lg text-white">{character?.mind}</div>
+            </div>
+            <div className="bg-slate-900 p-2 rounded border border-slate-700">
+              <div className="text-slate-400">MOXIE</div>
+              <div className="font-bold text-lg text-white">{character?.moxie}</div>
+            </div>
           </div>
         </div>
         
