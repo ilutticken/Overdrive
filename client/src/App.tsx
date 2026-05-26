@@ -203,6 +203,7 @@ const PlayerView = () => {
   const [activeMinigame, setActiveMinigame] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(3000); // Dynamic based on stats
   const [tapCount, setTapCount] = useState(0);
+  const minigameReportedRef = React.useRef(false);
 
   // Generate or retrieve persistent device token
   const getDeviceToken = () => {
@@ -237,7 +238,13 @@ const PlayerView = () => {
     socket.emit('player:join_room', payload, (res: any) => {
       if (res.success) {
         setJoined(true);
-        setCharacter(res.character);
+        // Merge persistent profile into character if present
+        if (res.profile) {
+          const merged = { ...res.character, health: res.profile.health, max_health: res.profile.max_health, credits: res.profile.credits, gear: res.profile.gear, status_effects: res.profile.status_effects, notes: res.profile.notes };
+          setCharacter(merged);
+        } else {
+          setCharacter(res.character);
+        }
         setRoomState(res.roomState);
       } else {
         alert(res.message);
@@ -352,7 +359,10 @@ const PlayerView = () => {
           if (prev <= 100) {
             clearInterval(timer);
             // Time up logic handled here to ensure it fires once
-            handleMinigameComplete(false);
+            if (!minigameReportedRef.current) {
+              minigameReportedRef.current = true;
+              handleMinigameComplete(false);
+            }
             return 0;
           }
           return prev - 100;
@@ -375,7 +385,10 @@ const PlayerView = () => {
     });
 
     if (newCount >= 15) {
-      handleMinigameComplete(true);
+      if (!minigameReportedRef.current) {
+        minigameReportedRef.current = true;
+        handleMinigameComplete(true);
+      }
     }
   };
 
@@ -385,6 +398,18 @@ const PlayerView = () => {
       roomCode: character.room_code,
       deviceToken: getDeviceToken(),
       success
+    });
+    // Reset reported flag shortly after to allow future minigames
+    setTimeout(() => { minigameReportedRef.current = false; }, 1000);
+  };
+
+  const gmSetAutoLose = (targetDeviceToken: string, enabled: boolean) => {
+    socket.emit('gm:set_auto_lose', { roomCode, deviceToken: targetDeviceToken, enabled }, (res: any) => {
+      if (!res || !res.success) {
+        const msg = (res && res.message) || 'Failed to set auto-lose';
+        setGmMessage({ text: msg, type: 'error' });
+        setTimeout(() => setGmMessage(null), 4000);
+      }
     });
   };
 
@@ -446,6 +471,7 @@ const PlayerView = () => {
         </div>
         
         <div className="w-full max-w-md flex-1 flex flex-col justify-center items-center">
+          {/* Player-side auto-lose removed; controlled by GM */}
           {roomState === 'lobby' && (
              <p className="text-center opacity-50">AWAITING GM INSTRUCTION...</p>
           )}
@@ -615,6 +641,16 @@ const GMView = () => {
     }
   }, [joined]);
 
+  const gmSetAutoLose = (targetDeviceToken: string, enabled: boolean) => {
+    socket.emit('gm:set_auto_lose', { roomCode, deviceToken: targetDeviceToken, enabled }, (res: any) => {
+      if (!res || !res.success) {
+        const msg = (res && res.message) || 'Failed to set auto-lose';
+        setGmMessage({ text: msg, type: 'error' });
+        setTimeout(() => setGmMessage(null), 4000);
+      }
+    });
+  };
+
   const changeState = (newState: string) => {
     socket.emit('gm:set_state', { roomCode, newState });
   };
@@ -704,6 +740,36 @@ const GMView = () => {
               >
                 TRIGGER OVERLOAD
               </button>
+            </div>
+            <div className="mt-2 flex gap-2 items-center">
+              <button className="w-12 h-10 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded text-sm" onClick={() => {
+                const cur = Number(c.health || 0);
+                const num = Math.max(0, cur - 1);
+                socket.emit('gm:set_player_health', { roomCode, deviceToken: c.device_token, newHealth: num }, (res: any) => {
+                  if (!res || !res.success) {
+                    const msg = (res && res.message) || 'Failed to set HP';
+                    setGmMessage({ text: msg, type: 'error' });
+                    setTimeout(() => setGmMessage(null), 4000);
+                  }
+                });
+              }}>-</button>
+              <div className="text-sm text-slate-300">HP: {c.health}/{c.max_health || 3}</div>
+              <button className="w-12 h-10 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded text-sm" onClick={() => {
+                const cur = Number(c.health || 0);
+                const num = Math.min(c.max_health || 3, cur + 1);
+                socket.emit('gm:set_player_health', { roomCode, deviceToken: c.device_token, newHealth: num }, (res: any) => {
+                  if (!res || !res.success) {
+                    const msg = (res && res.message) || 'Failed to set HP';
+                    setGmMessage({ text: msg, type: 'error' });
+                    setTimeout(() => setGmMessage(null), 4000);
+                  }
+                });
+              }}>+</button>
+
+              <label className="flex items-center gap-2 text-slate-300 ml-4">
+                <input type="checkbox" checked={Number(c.auto_lose_on_fail) === 1} onChange={e => gmSetAutoLose(c.device_token, e.target.checked)} />
+                <span className="text-xs">Auto-lose</span>
+              </label>
             </div>
           </div>
         ))}

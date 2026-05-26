@@ -79,6 +79,9 @@ const getCharacterStmt = db.prepare('SELECT * FROM characters WHERE room_code = 
 
 // Track active minigames per room to prevent overlapping minigames
 const activeMinigames = new Set();
+const updatePlayerHealthStmt = db.prepare('UPDATE players SET health = ? WHERE device_token = ?');
+const updateCharacterHealthStmt = db.prepare('UPDATE characters SET health = ? WHERE room_code = ? AND device_token = ?');
+const setPlayerAutoLoseStmt = db.prepare('UPDATE players SET auto_lose_on_fail = ? WHERE device_token = ?');
 
 
 io.on('connection', (socket) => {
@@ -95,10 +98,23 @@ io.on('connection', (socket) => {
         socket.join(roomCode);
         socketMap.set(socket.id, { roomCode, role: 'host' });
         
-        const characters = getCharactersStmt.all(roomCode);
-        if (callback) {
-          callback({ success: true, roomCode, roomState: room.state, characters });
-        }
+          const characters = getCharactersStmt.all(roomCode);
+          const merged = characters.map(c => {
+            const p = getPlayerStmt.get(c.device_token) || {};
+            return {
+              ...c,
+              health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
+              max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
+              credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
+              gear: p.gear ?? c.gear,
+              status_effects: p.status_effects ?? c.status_effects,
+              notes: p.notes ?? c.notes,
+              auto_lose_on_fail: p.auto_lose_on_fail ?? 0
+            };
+          });
+          if (callback) {
+            callback({ success: true, roomCode, roomState: room.state, characters: merged });
+          }
         console.log(`Host reconnected to room: ${roomCode}`);
         return;
       }
@@ -210,7 +226,20 @@ io.on('connection', (socket) => {
 
       // Fetch all characters to sync state
       const characters = getCharactersStmt.all(uppercaseRoomCode);
-      io.to(uppercaseRoomCode).emit('room:state_update', { characters, roomState: room.state });
+      const merged = characters.map(c => {
+        const p = getPlayerStmt.get(c.device_token) || {};
+        return {
+          ...c,
+          health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
+          max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
+          credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
+          gear: p.gear ?? c.gear,
+          status_effects: p.status_effects ?? c.status_effects,
+          notes: p.notes ?? c.notes,
+          auto_lose_on_fail: p.auto_lose_on_fail ?? 0
+        };
+      });
+      io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: room.state });
 
       if (callback) {
         const myCharacter = characters.find(c => c.device_token === deviceToken);
@@ -343,6 +372,55 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Player sets auto-lose-on-fail preference
+  socket.on('gm:set_auto_lose', (data, callback) => {
+    const { roomCode, deviceToken, enabled } = data || {};
+    if (!roomCode || !deviceToken) return callback?.({ success: false, message: 'Missing parameters' });
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    try {
+      setPlayerAutoLoseStmt.run(enabled ? 1 : 0, deviceToken);
+      const characters = getCharactersStmt.all(uppercaseRoomCode);
+      const merged = characters.map(c => {
+        const p = getPlayerStmt.get(c.device_token) || {};
+        return {
+          ...c,
+          health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
+          max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
+          credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
+          gear: p.gear ?? c.gear,
+          status_effects: p.status_effects ?? c.status_effects,
+          notes: p.notes ?? c.notes,
+          auto_lose_on_fail: p.auto_lose_on_fail ?? 0
+        };
+      });
+      io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: getRoomStmt.get(uppercaseRoomCode).state });
+      if (callback) callback({ success: true });
+    } catch (e) {
+      console.error('Error setting auto lose flag (GM)', e);
+      if (callback) callback({ success: false, message: 'DB error' });
+    }
+  });
+
+  // GM sets a player's health directly (clamped 0..max)
+  socket.on('gm:set_player_health', (data, callback) => {
+    const { roomCode, deviceToken, newHealth } = data || {};
+    if (!roomCode || !deviceToken || typeof newHealth !== 'number') return callback?.({ success: false, message: 'Missing parameters' });
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    try {
+      const player = getPlayerStmt.get(deviceToken);
+      if (!player) return callback?.({ success: false, message: 'Player not found' });
+      const clamped = Math.max(0, Math.min(newHealth, player.max_health || 3));
+      updatePlayerHealthStmt.run(clamped, deviceToken);
+      updateCharacterHealthStmt.run(clamped, uppercaseRoomCode, deviceToken);
+      const characters = getCharactersStmt.all(uppercaseRoomCode);
+      io.to(uppercaseRoomCode).emit('room:state_update', { characters, roomState: getRoomStmt.get(uppercaseRoomCode).state });
+      if (callback) callback({ success: true });
+    } catch (e) {
+      console.error('Error setting player health', e);
+      if (callback) callback({ success: false, message: 'DB error' });
+    }
+  });
+
   // 3. GM Joins a room
   socket.on('gm:join_room', (data, callback) => {
     const { roomCode } = data;
@@ -363,9 +441,22 @@ io.on('connection', (socket) => {
     socketMap.set(socket.id, { roomCode: uppercaseRoomCode, role: 'gm' });
     
     const characters = getCharactersStmt.all(uppercaseRoomCode);
+    const merged = characters.map(c => {
+      const p = getPlayerStmt.get(c.device_token) || {};
+      return {
+        ...c,
+        health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
+        max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
+        credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
+        gear: p.gear ?? c.gear,
+        status_effects: p.status_effects ?? c.status_effects,
+        notes: p.notes ?? c.notes,
+        auto_lose_on_fail: p.auto_lose_on_fail ?? 0
+      };
+    });
 
     if (callback) {
-      callback({ success: true, characters, roomState: room.state });
+      callback({ success: true, characters: merged, roomState: room.state });
     }
     console.log(`GM joined room ${uppercaseRoomCode}`);
   });
@@ -379,7 +470,20 @@ io.on('connection', (socket) => {
     updateRoomStateStmt.run(newState, uppercaseRoomCode);
     
     const characters = getCharactersStmt.all(uppercaseRoomCode);
-    io.to(uppercaseRoomCode).emit('room:state_update', { characters, roomState: newState });
+    const merged = characters.map(c => {
+      const p = getPlayerStmt.get(c.device_token) || {};
+      return {
+        ...c,
+        health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
+        max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
+        credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
+        gear: p.gear ?? c.gear,
+        status_effects: p.status_effects ?? c.status_effects,
+        notes: p.notes ?? c.notes,
+        auto_lose_on_fail: p.auto_lose_on_fail ?? 0
+      };
+    });
+    io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: newState });
     
     if (callback) callback({ success: true });
     console.log(`Room ${uppercaseRoomCode} state changed to ${newState}`);
@@ -454,10 +558,43 @@ io.on('connection', (socket) => {
     const uppercaseRoomCode = roomCode.toUpperCase();
     console.log(`Minigame completed for ${deviceToken} in room ${uppercaseRoomCode}. Success: ${success}`);
     
+    // Only process completion if a minigame was active for this room
+    if (!activeMinigames.has(uppercaseRoomCode)) {
+      console.log('Ignoring minigame completion: no active minigame for room', uppercaseRoomCode);
+      return;
+    }
+
     io.to(uppercaseRoomCode).emit('room:minigame_result', {
       deviceToken,
       success
     });
+    // If player failed and has auto_lose enabled, decrement health
+    try {
+      const persistent = getPlayerStmt.get(deviceToken);
+      if (!success && persistent && persistent.auto_lose_on_fail === 1) {
+        const newHealth = Math.max(0, (persistent.health || 0) - 1);
+        updatePlayerHealthStmt.run(newHealth, deviceToken);
+        updateCharacterHealthStmt.run(newHealth, uppercaseRoomCode, deviceToken);
+        const characters = getCharactersStmt.all(uppercaseRoomCode);
+        const merged = characters.map(c => {
+          const p = getPlayerStmt.get(c.device_token) || {};
+          return {
+            ...c,
+            health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
+            max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
+            credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
+            gear: p.gear ?? c.gear,
+            status_effects: p.status_effects ?? c.status_effects,
+            notes: p.notes ?? c.notes,
+            auto_lose_on_fail: p.auto_lose_on_fail ?? 0
+          };
+        });
+        io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: getRoomStmt.get(uppercaseRoomCode).state });
+      }
+    } catch (e) {
+      console.error('Error applying auto-lose HP', e);
+    }
+
     // Clear active minigame state for this room
     try { activeMinigames.delete(uppercaseRoomCode); } catch (e) {}
   });

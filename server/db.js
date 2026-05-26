@@ -41,6 +41,7 @@ const initSchema = () => {
       health INTEGER DEFAULT 3,
       max_health INTEGER DEFAULT 3,
       credits INTEGER DEFAULT 0,
+      auto_lose_on_fail INTEGER DEFAULT 0,
       gear TEXT DEFAULT '[]',
       status_effects TEXT DEFAULT '[]',
       notes TEXT DEFAULT '',
@@ -84,6 +85,9 @@ const initSchema = () => {
   } catch (err) {}
   try {
     db.exec(`ALTER TABLE characters ADD COLUMN max_health INTEGER DEFAULT 3;`);
+  } catch (err) {}
+  try {
+    db.exec(`ALTER TABLE players ADD COLUMN auto_lose_on_fail INTEGER DEFAULT 0;`);
   } catch (err) {}
 };
 
