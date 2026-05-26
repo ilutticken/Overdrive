@@ -588,6 +588,7 @@ const GMView = () => {
   const [joined, setJoined] = useState(false);
   const [characters, setCharacters] = useState<any[]>([]);
   const [roomState, setRoomState] = useState('lobby');
+  const [gmMessage, setGmMessage] = useState<{text: string, type: 'error' | 'info'} | null>(null);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -655,10 +656,15 @@ const GMView = () => {
           <button onClick={() => changeState('overdrive')} className={`px-4 py-2 rounded font-bold ${roomState === 'overdrive' ? 'bg-fuchsia-600 text-white' : 'bg-slate-700 hover:bg-slate-600'}`}>OVERDRIVE</button>
         </div>
       </div>
+      {gmMessage && (
+        <div className={`mb-4 p-3 rounded ${gmMessage.type === 'error' ? 'bg-red-800 text-white' : 'bg-slate-800 text-white'}`}>
+          {gmMessage.text}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {characters.map((c, i) => (
-          <div key={i} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+          <div key={i} className={`bg-slate-800 p-4 rounded-lg border border-slate-700 ${c.is_online === 0 ? 'opacity-40 grayscale' : ''}`}>
             <h3 className="text-xl font-bold text-white mb-2">{c.name}</h3>
             <div className="flex justify-between text-sm mb-4">
               <span className="text-green-400">HP: {c.health}/3</span>
@@ -685,9 +691,16 @@ const GMView = () => {
                     roomCode,
                     targetDeviceToken: c.device_token,
                     minigameType: 'overload'
+                  }, (res: any) => {
+                    if (!res || !res.success) {
+                      const msg = (res && res.message) || 'Failed to start minigame';
+                      setGmMessage({ text: msg, type: 'error' });
+                      setTimeout(() => setGmMessage(null), 4000);
+                    }
                   });
                 }}
                 className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded text-sm transition-colors"
+                disabled={c.is_online === 0}
               >
                 TRIGGER OVERLOAD
               </button>
