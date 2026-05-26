@@ -75,6 +75,10 @@ const insertProfileStmt = db.prepare(`
 `);
 const updateProfileLastUsedStmt = db.prepare('UPDATE character_profiles SET last_used = ? WHERE id = ?');
 const deleteProfileStmt = db.prepare('DELETE FROM character_profiles WHERE id = ? AND device_token = ?');
+const getCharacterStmt = db.prepare('SELECT * FROM characters WHERE room_code = ? AND device_token = ?');
+
+// Track active minigames per room to prevent overlapping minigames
+const activeMinigames = new Set();
 
 
 io.on('connection', (socket) => {
@@ -210,7 +214,9 @@ io.on('connection', (socket) => {
 
       if (callback) {
         const myCharacter = characters.find(c => c.device_token === deviceToken);
-        callback({ success: true, character: myCharacter, roomState: room.state });
+        // Fetch the persistent player profile and include it in the callback
+        const persistent = getPlayerStmt.get(deviceToken);
+        callback({ success: true, character: myCharacter, roomState: room.state, profile: persistent });
       }
 
       console.log(`Player ${name || deviceToken} joined room ${uppercaseRoomCode}`);
@@ -380,13 +386,39 @@ io.on('connection', (socket) => {
   });
 
   // 5. Minigame Flow
-  socket.on('gm:start_minigame', (data) => {
-    const { roomCode, targetDeviceToken, minigameType } = data;
-    if (!roomCode || !targetDeviceToken) return;
-    
+  socket.on('gm:start_minigame', (data, callback) => {
+    const { roomCode, targetDeviceToken, minigameType } = data || {};
+    if (!roomCode || !targetDeviceToken) {
+      if (callback) callback({ success: false, message: 'Missing parameters' });
+      return;
+    }
+
     const uppercaseRoomCode = roomCode.toUpperCase();
+
+    // Prevent starting if a minigame is already active in this room
+    if (activeMinigames.has(uppercaseRoomCode)) {
+      if (callback) callback({ success: false, message: 'A minigame is already active in this room' });
+      return;
+    }
+
+    // Ensure target character exists and is online
+    try {
+      const targetChar = getCharacterStmt.get(uppercaseRoomCode, targetDeviceToken);
+      if (!targetChar || targetChar.is_online === 0) {
+        if (callback) callback({ success: false, message: 'Target player is not online or not in room' });
+        return;
+      }
+    } catch (e) {
+      console.error('Error checking target character', e);
+      if (callback) callback({ success: false, message: 'DB error' });
+      return;
+    }
+
     console.log(`Minigame ${minigameType} warning triggered for ${targetDeviceToken} in room ${uppercaseRoomCode}`);
-    
+
+    // Mark minigame active for this room
+    activeMinigames.add(uppercaseRoomCode);
+
     // 1. Emit warning immediately
     io.to(uppercaseRoomCode).emit('room:minigame_warning', {
       targetDeviceToken,
@@ -400,6 +432,8 @@ io.on('connection', (socket) => {
         minigameType
       });
     }, 2500);
+
+    if (callback) callback({ success: true });
   });
 
   socket.on('player:minigame_progress', (data) => {
@@ -424,6 +458,8 @@ io.on('connection', (socket) => {
       deviceToken,
       success
     });
+    // Clear active minigame state for this room
+    try { activeMinigames.delete(uppercaseRoomCode); } catch (e) {}
   });
 
   socket.on('disconnect', () => {
