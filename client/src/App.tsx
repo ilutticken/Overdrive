@@ -43,11 +43,14 @@ const HostView = () => {
   const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean}>({ success: false, show: false });
 
   useEffect(() => {
-    socket.emit('host:create_room', (res: any) => {
+    const savedRoom = localStorage.getItem('overdrive_host_room');
+    
+    socket.emit('host:create_room', { roomCode: savedRoom }, (res: any) => {
       if (res.success) {
         setRoomCode(res.roomCode);
         setRoomState(res.roomState);
         setCharacters(res.characters);
+        localStorage.setItem('overdrive_host_room', res.roomCode);
       }
     });
 
@@ -166,8 +169,11 @@ const HostView = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {characters.length === 0 && <p className="text-slate-500 italic col-span-full">Waiting for connections...</p>}
               {characters.map((c, i) => (
-                <div key={i} className="bg-slate-800 p-4 rounded border border-slate-700 text-left">
-                  <div className="font-bold text-xl">{c.name}</div>
+                <div key={i} className={`bg-slate-800 p-4 rounded border border-slate-700 text-left transition-all ${c.is_online === 0 ? 'opacity-40 grayscale' : ''}`}>
+                  <div className="font-bold text-xl flex justify-between items-center">
+                    {c.name}
+                    {c.is_online === 0 && <span className="text-xs font-black text-red-500 bg-red-950 px-2 py-1 rounded">OFFLINE</span>}
+                  </div>
                   <div className="text-xs text-slate-400 mt-2">HP: {c.health}/3 | ฿: {c.credits}</div>
                 </div>
               ))}
@@ -182,10 +188,15 @@ const HostView = () => {
 const PlayerView = () => {
   const [roomCode, setRoomCode] = useState('');
   const [name, setName] = useState('');
-  const [archetype, setArchetype] = useState('street-sam');
   const [joined, setJoined] = useState(false);
   const [character, setCharacter] = useState<any>(null);
   const [roomState, setRoomState] = useState('lobby');
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [showProfiles, setShowProfiles] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+  const [createName, setCreateName] = useState('');
+  const [createArchetype, setCreateArchetype] = useState('street-sam');
+  const [showCreate, setShowCreate] = useState(false);
 
   // Minigame State
   const [warningState, setWarningState] = useState<string | null>(null);
@@ -212,20 +223,81 @@ const PlayerView = () => {
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     const token = getDeviceToken();
-    const stats = archetypes[archetype];
+    const stats = archetypes[createArchetype];
     
-    socket.emit('player:join_room', {
+    const payload: any = {
       roomCode,
       deviceToken: token,
-      name,
-      stats: { meat: stats.meat, mind: stats.mind, moxie: stats.moxie }
-    }, (res: any) => {
+    };
+
+    // If selectedProfileId exists, tell server to use that profile
+    if (selectedProfileId) payload.profileId = selectedProfileId;
+    else payload.name = name, payload.stats = { meat: stats.meat, mind: stats.mind, moxie: stats.moxie };
+
+    socket.emit('player:join_room', payload, (res: any) => {
       if (res.success) {
         setJoined(true);
         setCharacter(res.character);
         setRoomState(res.roomState);
       } else {
         alert(res.message);
+      }
+    });
+  };
+
+  const fetchProfiles = () => {
+    const token = getDeviceToken();
+    socket.emit('player:list_profiles', { deviceToken: token }, (res: any) => {
+      if (res.success) {
+        setProfiles(res.profiles || []);
+        setShowProfiles(true);
+      } else {
+        alert(res.message || 'Failed to load profiles');
+      }
+    });
+  };
+
+  const handleDeleteProfile = (id: number) => {
+    const token = getDeviceToken();
+    if (!confirm('Delete this character?')) return;
+    socket.emit('player:delete_profile', { deviceToken: token, id }, (res: any) => {
+      if (res.success) {
+        // Refresh list
+        fetchProfiles();
+        if (selectedProfileId === id) setSelectedProfileId(null);
+      } else {
+        alert(res.message || 'Failed to delete');
+      }
+    });
+  };
+
+  const handleCreateProfile = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const token = getDeviceToken();
+    const stats = archetypes[createArchetype];
+    socket.emit('player:create_profile', {
+      deviceToken: token,
+      name: createName || 'Unnamed',
+      meat: stats.meat,
+      mind: stats.mind,
+      moxie: stats.moxie,
+      health: 3,
+      max_health: 3,
+      credits: 0,
+      gear: '[]',
+      status_effects: '[]',
+      notes: ''
+    }, (res: any) => {
+      if (res.success) {
+        // Refresh list and auto-select
+        fetchProfiles();
+        setSelectedProfileId(res.id || null);
+        setShowProfiles(true);
+        setShowCreate(false);
+        setName(res.profile.name || '');
+        setCreateName('');
+      } else {
+        alert(res.message || 'Failed to create profile');
       }
     });
   };
@@ -392,12 +464,92 @@ const PlayerView = () => {
     );
   }
 
+  // Profile selection UI will be embedded in the existing form below
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4">
       <form onSubmit={handleJoin} className="bg-slate-800 p-8 rounded-lg w-full max-w-md border border-slate-700">
         <h2 className="text-2xl font-bold mb-6 text-fuchsia-400">INITIALIZE LINK</h2>
         
         <div className="space-y-4">
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                // toggle profiles panel
+                if (showProfiles) {
+                  setShowProfiles(false);
+                } else {
+                  fetchProfiles();
+                }
+                setShowCreate(false);
+              }}
+              className={`text-sm px-3 py-1 rounded ${showProfiles ? 'bg-slate-700 text-white border border-slate-600' : 'bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700'}`}>
+              Choose Existing
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreate((s) => !s);
+                setShowProfiles(false);
+              }}
+              className={`text-sm px-3 py-1 rounded ${showCreate ? 'bg-fuchsia-600 text-white' : 'bg-fuchsia-500 text-white/90 hover:bg-fuchsia-600'}`}>
+              Create Character
+            </button>
+          </div>
+
+          {/* Create New Character Section (toggle) */}
+          {showCreate && (
+            <div className="mt-4 mb-4 p-4 bg-slate-900 rounded border">
+              <h3 className="font-bold mb-2">Create New Character</h3>
+              <div className="space-y-3">
+                <input value={createName} onChange={e => setCreateName(e.target.value)} placeholder="Character Name" className="w-full p-2 bg-slate-800 rounded" />
+                <div className="grid grid-cols-1 gap-2">
+                  {Object.entries(archetypes).map(([key, data]) => (
+                    <label key={key} className={`p-2 rounded border cursor-pointer transition-all ${createArchetype === key ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-slate-700 bg-slate-900 hover:border-slate-500'}`}>
+                      <div className="flex items-center gap-3">
+                        <input type="radio" name="createArchetype" value={key} checked={createArchetype === key} onChange={() => setCreateArchetype(key)} className="hidden" />
+                        <div className="flex-1">
+                          <div className="font-bold text-fuchsia-300">{data.label}</div>
+                          <div className="text-xs text-slate-400 mt-1">{data.desc}</div>
+                          <div className="flex gap-2 mt-2 text-[10px] font-mono">
+                            <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MEAT:{data.meat}</span>
+                            <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MIND:{data.mind}</span>
+                            <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MOXIE:{data.moxie}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <div className="text-right">
+                  <button type="button" onClick={handleCreateProfile} className="px-4 py-2 bg-fuchsia-600 rounded text-white">Create</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showProfiles && (
+            <div className="mb-2 p-3 bg-slate-900 rounded border">
+              {profiles.length === 0 && <div className="text-sm italic">No saved characters found.</div>}
+              {profiles.map((p) => (
+                <div key={p.id} className={`flex items-center justify-between p-2 rounded hover:bg-slate-800 ${selectedProfileId === p.id ? 'ring-2 ring-fuchsia-500' : ''}`}>
+                  <div>
+                    <div className="font-bold">{p.name || 'Unnamed'}</div>
+                    <div className="text-xs text-slate-400">MEAT:{p.meat} MIND:{p.mind} MOXIE:{p.moxie}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="radio" name="profile" checked={selectedProfileId === p.id} onChange={() => { setSelectedProfileId(p.id); setName(p.name || ''); }} />
+                    <button type="button" onClick={() => handleDeleteProfile(p.id)} className="text-xs text-red-400 bg-red-950 px-2 py-1 rounded">Delete</button>
+                  </div>
+                </div>
+              ))}
+              <div className="mt-2 text-right">
+                <button type="button" onClick={() => setShowProfiles(false)} className="text-sm text-slate-400">Close</button>
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-xs text-slate-400 mb-1">ROOM CODE</label>
             <input 
@@ -420,34 +572,7 @@ const PlayerView = () => {
             />
           </div>
           
-          <div className="pt-4">
-            <label className="block text-xs text-slate-400 mb-2">SELECT ARCHETYPE</label>
-            <div className="space-y-3">
-              {Object.entries(archetypes).map(([key, data]) => (
-                <label key={key} className={`block p-3 rounded border cursor-pointer transition-all ${archetype === key ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-slate-700 bg-slate-900 hover:border-slate-500'}`}>
-                  <div className="flex items-center gap-3">
-                    <input 
-                      type="radio" 
-                      name="archetype" 
-                      value={key} 
-                      checked={archetype === key} 
-                      onChange={() => setArchetype(key)}
-                      className="hidden"
-                    />
-                    <div className="flex-1">
-                      <div className="font-bold text-fuchsia-300">{data.label}</div>
-                      <div className="text-xs text-slate-400 mt-1">{data.desc}</div>
-                      <div className="flex gap-2 mt-2 text-[10px] font-mono">
-                        <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MEAT:{data.meat}</span>
-                        <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MIND:{data.mind}</span>
-                        <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MOXIE:{data.moxie}</span>
-                      </div>
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
+          {/* Archetype selection moved to Create New Character section */}
         </div>
 
         <button type="submit" className="w-full mt-8 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-4 rounded transition-colors">
