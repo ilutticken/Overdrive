@@ -119,7 +119,44 @@ const HostView = () => {
   const [minigameProgress, setMinigameProgress] = useState(0);
   const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean}>({ success: false, show: false });
 
+  const audioRef = React.useRef<HTMLAudioElement>(null);
+
   const isGameReady = gmOnline && characters.filter(c => c.is_online === 1).length >= 1;
+
+  // Audio Fading Logic
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    let fadeInterval: number;
+
+    if (!isGameReady) {
+      // Fade in
+      audio.volume = 0;
+      audio.play().catch(e => console.warn('Audio autoplay prevented:', e));
+      fadeInterval = window.setInterval(() => {
+        if (audio.volume < 0.95) {
+          audio.volume += 0.05;
+        } else {
+          audio.volume = 1;
+          clearInterval(fadeInterval);
+        }
+      }, 100);
+    } else {
+      // Fade out
+      fadeInterval = window.setInterval(() => {
+        if (audio.volume > 0.05) {
+          audio.volume -= 0.05;
+        } else {
+          audio.volume = 0;
+          audio.pause();
+          clearInterval(fadeInterval);
+        }
+      }, 100);
+    }
+
+    return () => clearInterval(fadeInterval);
+  }, [isGameReady]);
 
   useEffect(() => {
     const savedRoom = localStorage.getItem('overdrive_host_room');
@@ -188,6 +225,7 @@ const HostView = () => {
       ${roomState === 'combat' ? 'bg-red-950/20' : roomState === 'overdrive' ? 'bg-fuchsia-950/20' : ''}
       ${activeMinigameTarget || warningTarget ? 'bg-red-950/80' : ''}
     `}>
+      <audio ref={audioRef} src="/sound/cyber_runner.ogg" loop />
       {isGameReady && <CityBackground />}
       {/* Result Splash Overlay */}
       {minigameResult.show && (
