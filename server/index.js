@@ -115,6 +115,8 @@ io.on('connection', (socket) => {
           if (callback) {
             callback({ success: true, roomCode, roomState: room.state, characters: merged });
           }
+          const gmOnline = Array.from(socketMap.values()).some(s => s.roomCode === roomCode && s.role === 'gm');
+          socket.emit('room:gm_presence', { gmOnline });
         console.log(`Host reconnected to room: ${roomCode}`);
         return;
       }
@@ -458,6 +460,7 @@ io.on('connection', (socket) => {
     if (callback) {
       callback({ success: true, characters: merged, roomState: room.state });
     }
+    io.to(uppercaseRoomCode).emit('room:gm_presence', { gmOnline: true });
     console.log(`GM joined room ${uppercaseRoomCode}`);
   });
 
@@ -615,6 +618,10 @@ io.on('connection', (socket) => {
         } catch (e) {
           console.error('Error updating disconnect presence', e);
         }
+      }
+      if (socketInfo.role === 'gm') {
+        const otherGmOnline = Array.from(socketMap.values()).some(s => s.roomCode === socketInfo.roomCode && s.role === 'gm' && s.id !== socket.id);
+        io.to(socketInfo.roomCode).emit('room:gm_presence', { gmOnline: otherGmOnline });
       }
       socketMap.delete(socket.id);
     }

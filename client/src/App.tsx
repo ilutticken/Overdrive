@@ -2,6 +2,82 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { socket } from './socket';
 
+const StaticLayer = ({ src }: { src: string }) => (
+  <div className="absolute inset-0" style={{ 
+    backgroundImage: `url(${src})`, 
+    backgroundSize: 'auto 100%', 
+    backgroundPosition: 'bottom left', 
+    backgroundRepeat: 'repeat-x'
+  }}></div>
+);
+
+const ScrollingLayer = ({ src, speedClass }: { src: string, speedClass: string }) => (
+  <div className={`absolute inset-0 flex w-max ${speedClass}`}>
+    {[1, 2, 3, 4].map(i => (
+      <img key={i} src={src} className="h-full w-auto max-w-none pointer-events-none" alt="" />
+    ))}
+  </div>
+);
+
+const CityBackground = () => {
+  const rainSvg = `data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cline x1='20' y1='0' x2='20' y2='25' stroke='rgba(100,240,255,0.4)' stroke-width='1.5' /%3E%3Cline x1='70' y1='50' x2='70' y2='80' stroke='rgba(100,240,255,0.2)' stroke-width='1' /%3E%3C/svg%3E`;
+
+  return (
+    <div className="absolute top-0 left-0 right-0 h-[65vh] pointer-events-none overflow-hidden bg-[#0a0a1a] z-[-1] border-b-2 border-cyan-900 shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+      
+      <StaticLayer src="/city-skyline/Background_City_Skyline_Stars_01.png" />
+      <ScrollingLayer src="/city-skyline/Background_City_Skyline_Cloud_01.png" speedClass="animate-cloud-slow" />
+      <StaticLayer src="/city-skyline/Background_City_Skyline_Back_04.png" />
+      <ScrollingLayer src="/city-skyline/Background_City_Skyline_Cloud_02.png" speedClass="animate-cloud-fast" />
+      <StaticLayer src="/city-skyline/Background_City_Skyline_Back_03.png" />
+      <StaticLayer src="/city-skyline/Background_City_Skyline_Back_02.png" />
+      <StaticLayer src="/city-skyline/Background_City_Skyline_Back_01.png" />
+      <StaticLayer src="/city-skyline/Background_City_Skyline_Front_02.png" />
+      <StaticLayer src="/city-skyline/Background_City_Skyline_Front_01.png" />
+      
+      {/* Rain overlays */}
+      <div className="absolute inset-0 mix-blend-screen overflow-hidden">
+        {/* Drops */}
+        <div className="absolute -top-[50%] -left-[50%] -right-[50%] h-[200%] rain-drop-layer" style={{
+          backgroundImage: `url("${rainSvg}")`,
+          backgroundSize: '100px 100px',
+          transform: 'rotate(15deg)'
+        }}></div>
+        {/* CRT Scanline */}
+        <div className="absolute inset-0 opacity-30" style={{
+          backgroundImage: 'linear-gradient(180deg, rgba(34,211,238,0) 0%, rgba(34,211,238,0.5) 50%, rgba(34,211,238,0) 100%)',
+          backgroundSize: '100% 200%',
+          animation: 'rain-scan 2s linear infinite'
+        }}></div>
+      </div>
+
+      <style>{`
+        @keyframes rain-scan {
+          0% { background-position: 0% -100%; }
+          100% { background-position: 0% 100%; }
+        }
+        @keyframes rain-fall {
+          from { background-position: 0 0; }
+          to { background-position: 0 100px; }
+        }
+        .rain-drop-layer {
+          animation: rain-fall 0.3s linear infinite;
+        }
+        @keyframes scroll-left {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-25%); }
+        }
+        .animate-cloud-slow {
+          animation: scroll-left 120s linear infinite;
+        }
+        .animate-cloud-fast {
+          animation: scroll-left 80s linear infinite;
+        }
+      `}</style>
+    </div>
+  );
+};
+
 // --- Placeholder Components ---
 
 const Home = () => {
@@ -35,12 +111,15 @@ const HostView = () => {
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [characters, setCharacters] = useState<any[]>([]);
   const [roomState, setRoomState] = useState('lobby');
+  const [gmOnline, setGmOnline] = useState(false);
 
   // Minigame Display State
   const [warningTarget, setWarningTarget] = useState<string | null>(null);
   const [activeMinigameTarget, setActiveMinigameTarget] = useState<string | null>(null);
   const [minigameProgress, setMinigameProgress] = useState(0);
   const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean}>({ success: false, show: false });
+
+  const isGameReady = gmOnline && characters.filter(c => c.is_online === 1).length >= 1;
 
   useEffect(() => {
     const savedRoom = localStorage.getItem('overdrive_host_room');
@@ -57,6 +136,10 @@ const HostView = () => {
     socket.on('room:state_update', (data) => {
       setCharacters(data.characters);
       setRoomState(data.roomState);
+    });
+
+    socket.on('room:gm_presence', (data) => {
+      setGmOnline(data.gmOnline);
     });
 
     socket.on('room:minigame_warning', (data) => {
@@ -89,6 +172,7 @@ const HostView = () => {
 
     return () => {
       socket.off('room:state_update');
+      socket.off('room:gm_presence');
       socket.off('room:minigame_warning');
       socket.off('room:minigame_started');
       socket.off('room:minigame_progress');
@@ -100,10 +184,11 @@ const HostView = () => {
   const warningCharacter = characters.find(c => c.device_token === warningTarget);
 
   return (
-    <div className={`flex flex-col items-center justify-center min-h-screen p-8 text-center transition-colors duration-500 
+    <div className={`relative flex flex-col items-center justify-center min-h-screen p-8 text-center transition-colors duration-500 overflow-hidden
       ${roomState === 'combat' ? 'bg-red-950/20' : roomState === 'overdrive' ? 'bg-fuchsia-950/20' : ''}
       ${activeMinigameTarget || warningTarget ? 'bg-red-950/80' : ''}
     `}>
+      {isGameReady && <CityBackground />}
       {/* Result Splash Overlay */}
       {minigameResult.show && (
         <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm`}>
@@ -151,7 +236,7 @@ const HostView = () => {
       {/* Standard Host UI (Hidden during minigame) */}
       {!activeMinigameTarget && !warningTarget && (
         <>
-          <div className={`mb-8 border-b-4 pb-8 w-full max-w-4xl transition-colors ${roomState === 'combat' ? 'border-red-500' : roomState === 'overdrive' ? 'border-fuchsia-500' : 'border-cyan-500'}`}>
+          <div className={`transition-all duration-1000 z-10 ${isGameReady ? 'absolute top-8 right-8 scale-50 origin-top-right border-none pb-0 mb-0' : 'mb-8 border-b-4 pb-8 w-full max-w-4xl'} ${!isGameReady && roomState === 'combat' ? 'border-red-500' : !isGameReady && roomState === 'overdrive' ? 'border-fuchsia-500' : !isGameReady ? 'border-cyan-500' : ''}`}>
             <h2 className="text-3xl text-slate-400 font-bold mb-2">ACCESS CODE:</h2>
             <div className="text-9xl font-black tracking-[0.2em] text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">
               {roomCode || '....'}
@@ -164,19 +249,21 @@ const HostView = () => {
             )}
           </div>
           
-          <div className="w-full max-w-4xl">
-            <h3 className="text-2xl text-left text-fuchsia-400 font-bold mb-6 border-b border-fuchsia-400/30 pb-2">CONNECTED OPERATIVES</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {characters.length === 0 && <p className="text-slate-500 italic col-span-full">Waiting for connections...</p>}
-              {characters.map((c, i) => (
-                <div key={i} className={`bg-slate-800 p-4 rounded border border-slate-700 text-left transition-all ${c.is_online === 0 ? 'opacity-40 grayscale' : ''}`}>
-                  <div className="font-bold text-xl flex justify-between items-center">
-                    {c.name}
-                    {c.is_online === 0 && <span className="text-xs font-black text-red-500 bg-red-950 px-2 py-1 rounded">OFFLINE</span>}
+          <div className={`transition-all duration-1000 z-10 w-full ${isGameReady ? 'absolute bottom-0 left-0 right-0 h-[35vh] flex flex-col items-center pt-8 px-8' : 'max-w-4xl'}`}>
+            <div className={`w-full ${isGameReady ? 'max-w-7xl' : ''}`}>
+              <h3 className="text-2xl text-left text-fuchsia-400 font-bold mb-6 border-b border-fuchsia-400/30 pb-2">CONNECTED OPERATIVES</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {characters.length === 0 && <p className="text-slate-500 italic col-span-full">Waiting for connections...</p>}
+                {characters.map((c, i) => (
+                  <div key={i} className={`bg-slate-800 p-4 rounded border border-slate-700 text-left transition-all ${c.is_online === 0 ? 'opacity-40 grayscale' : ''}`}>
+                    <div className="font-bold text-xl flex justify-between items-center">
+                      {c.name}
+                      {c.is_online === 0 && <span className="text-xs font-black text-red-500 bg-red-950 px-2 py-1 rounded">OFFLINE</span>}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-2">HP: {c.health}/3 | ฿: {c.credits}</div>
                   </div>
-                  <div className="text-xs text-slate-400 mt-2">HP: {c.health}/3 | ฿: {c.credits}</div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </>
