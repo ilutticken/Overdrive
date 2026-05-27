@@ -79,6 +79,8 @@ const getCharacterStmt = db.prepare('SELECT * FROM characters WHERE room_code = 
 
 // Track active minigames per room to prevent overlapping minigames
 const activeMinigames = new Set();
+const activeFlashDraws = new Map();
+const activeCombatQueues = new Map();
 const updatePlayerHealthStmt = db.prepare('UPDATE players SET health = ? WHERE device_token = ?');
 const updateCharacterHealthStmt = db.prepare('UPDATE characters SET health = ? WHERE room_code = ? AND device_token = ?');
 const setPlayerAutoLoseStmt = db.prepare('UPDATE players SET auto_lose_on_fail = ? WHERE device_token = ?');
@@ -600,6 +602,88 @@ io.on('connection', (socket) => {
 
     // Clear active minigame state for this room
     try { activeMinigames.delete(uppercaseRoomCode); } catch (e) {}
+  });
+
+  // Flash Draw Flow
+  socket.on('gm:start_flash_draw', (data, callback) => {
+    const { roomCode } = data || {};
+    if (!roomCode) return callback?.({ success: false, message: 'Missing room code' });
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    
+    // Clear old state
+    activeFlashDraws.delete(uppercaseRoomCode);
+    
+    // 1. Emit prepare (READY...)
+    io.to(uppercaseRoomCode).emit('room:flash_draw_prepare');
+    
+    // 2. Wait random delay (2.5 to 5.5 seconds)
+    const delay = Math.floor(Math.random() * 3000) + 2500;
+    setTimeout(() => {
+      const startTime = Date.now();
+      const initialQueue = [
+        { name: 'Corporate Drone', reactionTime: 180, isEnemy: true },
+        { name: 'Security Guard', reactionTime: 300, isEnemy: true }
+      ];
+      activeFlashDraws.set(uppercaseRoomCode, { startTime, queue: initialQueue });
+      io.to(uppercaseRoomCode).emit('room:flash_draw_go', { queue: initialQueue });
+    }, delay);
+
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('player:flash_draw_tap', (data) => {
+    const { roomCode, deviceToken, name } = data;
+    if (!roomCode || !deviceToken) return;
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    const flashDraw = activeFlashDraws.get(uppercaseRoomCode);
+    if (!flashDraw) return; // Too late or not active
+
+    // Check if player already tapped
+    if (flashDraw.queue.some(entry => entry.deviceToken === deviceToken)) return;
+
+    const reactionTime = Date.now() - flashDraw.startTime;
+    flashDraw.queue.push({ name: name || 'Unknown Operative', reactionTime, isEnemy: false, deviceToken });
+    
+    // Sort queue by reaction time
+    flashDraw.queue.sort((a, b) => a.reactionTime - b.reactionTime);
+    
+    io.to(uppercaseRoomCode).emit('room:flash_draw_results', { queue: flashDraw.queue });
+  });
+
+  socket.on('gm:confirm_initiative', (data, callback) => {
+    const { roomCode } = data || {};
+    if (!roomCode) return;
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    const flashDraw = activeFlashDraws.get(uppercaseRoomCode);
+    if (flashDraw && flashDraw.queue) {
+      const combatState = { queue: flashDraw.queue, activeIndex: 0 };
+      activeCombatQueues.set(uppercaseRoomCode, combatState);
+      activeFlashDraws.delete(uppercaseRoomCode);
+      io.to(uppercaseRoomCode).emit('room:flash_draw_complete');
+      io.to(uppercaseRoomCode).emit('room:combat_queue_update', combatState);
+    }
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('gm:next_turn', (data, callback) => {
+    const { roomCode } = data || {};
+    if (!roomCode) return;
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    const combatState = activeCombatQueues.get(uppercaseRoomCode);
+    if (combatState && combatState.queue && combatState.queue.length > 0) {
+      combatState.activeIndex = (combatState.activeIndex + 1) % combatState.queue.length;
+      io.to(uppercaseRoomCode).emit('room:combat_queue_update', combatState);
+    }
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('gm:clear_initiative', (data, callback) => {
+    const { roomCode } = data || {};
+    if (!roomCode) return;
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    activeCombatQueues.delete(uppercaseRoomCode);
+    io.to(uppercaseRoomCode).emit('room:combat_queue_update', null);
+    if (callback) callback({ success: true });
   });
 
   socket.on('disconnect', () => {

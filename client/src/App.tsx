@@ -119,6 +119,11 @@ const HostView = () => {
   const [minigameProgress, setMinigameProgress] = useState(0);
   const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean}>({ success: false, show: false });
 
+  // Flash Draw State
+  const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
+  const [initiativeQueue, setInitiativeQueue] = useState<any[]>([]);
+  const [activeCombatState, setActiveCombatState] = useState<{queue: any[], activeIndex: number} | null>(null);
+
   const audioRef = React.useRef<HTMLAudioElement>(null);
 
   const isGameReady = gmOnline && characters.filter(c => c.is_online === 1).length >= 1;
@@ -207,6 +212,30 @@ const HostView = () => {
       }, 4000);
     });
 
+    socket.on('room:flash_draw_prepare', () => {
+      setFlashDrawState('prepare');
+      setInitiativeQueue([]);
+    });
+
+    socket.on('room:flash_draw_go', (data) => {
+      setFlashDrawState('go');
+      if (data && data.queue) setInitiativeQueue(data.queue);
+    });
+
+    socket.on('room:flash_draw_results', (data) => {
+      setFlashDrawState('results');
+      if (data && data.queue) setInitiativeQueue(data.queue);
+    });
+
+    socket.on('room:flash_draw_complete', () => {
+      setFlashDrawState('idle');
+      setInitiativeQueue([]);
+    });
+
+    socket.on('room:combat_queue_update', (data) => {
+      setActiveCombatState(data);
+    });
+
     return () => {
       socket.off('room:state_update');
       socket.off('room:gm_presence');
@@ -214,6 +243,11 @@ const HostView = () => {
       socket.off('room:minigame_started');
       socket.off('room:minigame_progress');
       socket.off('room:minigame_result');
+      socket.off('room:flash_draw_prepare');
+      socket.off('room:flash_draw_go');
+      socket.off('room:flash_draw_results');
+      socket.off('room:flash_draw_complete');
+      socket.off('room:combat_queue_update');
     };
   }, []);
 
@@ -271,9 +305,55 @@ const HostView = () => {
         </div>
       )}
 
-      {/* Standard Host UI (Hidden during minigame) */}
-      {!activeMinigameTarget && !warningTarget && (
+      {/* Flash Draw UI */}
+      {flashDrawState === 'prepare' && (
+        <div className="fixed inset-0 z-40 bg-black/90 flex flex-col items-center justify-center animate-pulse">
+           <div className="text-9xl font-black text-red-600 tracking-widest drop-shadow-[0_0_30px_rgba(220,38,38,1)]">
+             READY...
+           </div>
+        </div>
+      )}
+      {flashDrawState === 'go' && (
+        <div className="fixed inset-0 z-40 bg-black/90 flex flex-col items-center justify-center">
+           <div className="text-9xl font-black text-green-500 tracking-widest animate-bounce drop-shadow-[0_0_50px_rgba(34,197,94,1)]">
+             DRAW!
+           </div>
+        </div>
+      )}
+      {flashDrawState === 'results' && (
+        <div className="fixed inset-0 z-40 bg-black/90 flex flex-col items-center pt-24 pb-8 overflow-y-auto">
+           <h2 className="text-6xl font-black text-green-500 mb-12 tracking-widest">INITIATIVE QUEUE</h2>
+           <div className="w-full max-w-4xl space-y-4">
+             {initiativeQueue.map((entry, idx) => (
+               <div key={idx} className={`p-6 rounded-lg border-2 flex justify-between items-center text-3xl font-bold ${entry.isEnemy ? 'bg-red-950/50 border-red-500 text-red-400' : 'bg-slate-800/80 border-cyan-500 text-cyan-300'}`}>
+                 <div className="flex items-center gap-4">
+                   <span className="text-slate-500 w-12">{idx + 1}.</span>
+                   <span>{entry.name}</span>
+                 </div>
+                 <span className="font-mono">{entry.reactionTime}ms</span>
+               </div>
+             ))}
+           </div>
+           <p className="mt-12 text-slate-500 text-xl">Waiting for GM to resume operations...</p>
+        </div>
+      )}
+
+      {/* Standard Host UI (Hidden during minigame or flash draw) */}
+      {!activeMinigameTarget && !warningTarget && flashDrawState === 'idle' && (
         <>
+          {activeCombatState && activeCombatState.queue.length > 0 && (
+            <div className="absolute top-8 left-8 z-10 w-64 bg-slate-900/80 border border-slate-700 rounded-lg p-4 shadow-2xl backdrop-blur-sm">
+              <h3 className="text-red-500 font-bold mb-3 border-b border-red-900 pb-1 text-sm tracking-widest">INITIATIVE</h3>
+              <div className="space-y-2">
+                {activeCombatState.queue.map((entry, idx) => (
+                  <div key={idx} className={`p-2 rounded text-sm flex justify-between items-center transition-all ${idx === activeCombatState.activeIndex ? 'bg-red-600 text-white font-bold scale-105 border-l-4 border-white' : entry.isEnemy ? 'text-red-400 opacity-80' : 'text-cyan-400 opacity-80'}`}>
+                    <span className="truncate pr-2">{idx + 1}. {entry.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
           <div className={`transition-all duration-1000 z-10 ${isGameReady ? 'absolute top-8 right-8 scale-50 origin-top-right border-none pb-0 mb-0' : 'mb-8 border-b-4 pb-8 w-full max-w-4xl'} ${!isGameReady && roomState === 'combat' ? 'border-red-500' : !isGameReady && roomState === 'overdrive' ? 'border-fuchsia-500' : !isGameReady ? 'border-cyan-500' : ''}`}>
             <h2 className="text-3xl text-slate-400 font-bold mb-2">ACCESS CODE:</h2>
             <div className="text-9xl font-black tracking-[0.2em] text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">
@@ -329,6 +409,19 @@ const PlayerView = () => {
   const [timeLeft, setTimeLeft] = useState(3000); // Dynamic based on stats
   const [tapCount, setTapCount] = useState(0);
   const minigameReportedRef = React.useRef(false);
+
+  // Flash Draw State
+  const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
+
+  const handleFlashDrawTap = () => {
+    if (flashDrawState !== 'go') return;
+    socket.emit('player:flash_draw_tap', {
+      roomCode: character?.room_code || roomCode,
+      deviceToken: getDeviceToken(),
+      name: character?.name
+    });
+    setFlashDrawState('results');
+  };
 
   // Generate or retrieve persistent device token
   const getDeviceToken = () => {
@@ -467,10 +560,30 @@ const PlayerView = () => {
         }
       });
 
+      socket.on('room:flash_draw_prepare', () => {
+        setFlashDrawState('prepare');
+      });
+
+      socket.on('room:flash_draw_go', () => {
+        setFlashDrawState('go');
+      });
+
+      socket.on('room:flash_draw_results', () => {
+        setFlashDrawState('results');
+      });
+
+      socket.on('room:flash_draw_complete', () => {
+        setFlashDrawState('idle');
+      });
+
       return () => {
         socket.off('room:state_update');
         socket.off('room:minigame_warning');
         socket.off('room:minigame_started');
+        socket.off('room:flash_draw_prepare');
+        socket.off('room:flash_draw_go');
+        socket.off('room:flash_draw_results');
+        socket.off('room:flash_draw_complete');
       };
     }
   }, [joined]);
@@ -528,17 +641,42 @@ const PlayerView = () => {
     setTimeout(() => { minigameReportedRef.current = false; }, 1000);
   };
 
-  const gmSetAutoLose = (targetDeviceToken: string, enabled: boolean) => {
-    socket.emit('gm:set_auto_lose', { roomCode, deviceToken: targetDeviceToken, enabled }, (res: any) => {
-      if (!res || !res.success) {
-        const msg = (res && res.message) || 'Failed to set auto-lose';
-        setGmMessage({ text: msg, type: 'error' });
-        setTimeout(() => setGmMessage(null), 4000);
-      }
-    });
-  };
-
   if (joined) {
+    if (flashDrawState === 'prepare') {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-red-900 border-8 border-red-500 animate-pulse duration-75">
+          <div className="text-6xl font-black text-white mb-6 text-center tracking-widest drop-shadow-[0_0_20px_rgba(255,255,255,0.9)]">
+            READY...
+          </div>
+        </div>
+      );
+    }
+
+    if (flashDrawState === 'go') {
+      return (
+        <div 
+          className="flex flex-col items-center justify-center min-h-screen p-6 bg-green-500 cursor-pointer active:bg-green-600 transition-colors"
+          onPointerDown={handleFlashDrawTap}
+        >
+          <div className="text-6xl font-black text-white text-center tracking-widest drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+            DRAW!
+          </div>
+          <p className="mt-8 text-white/80 font-bold">TAP ANYWHERE</p>
+        </div>
+      );
+    }
+
+    if (flashDrawState === 'results') {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-900">
+          <div className="text-3xl font-black text-cyan-400 mb-6 text-center tracking-widest">
+            LATENCY LOGGED
+          </div>
+          <p className="text-xl text-slate-400 font-bold text-center">CHECK MAIN SCREEN FOR INITIATIVE QUEUE</p>
+        </div>
+      );
+    }
+
     if (warningState === 'overload') {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-red-950/90 border-8 border-red-600 animate-pulse duration-75">
@@ -741,6 +879,9 @@ const GMView = () => {
   const [roomState, setRoomState] = useState('lobby');
   const [gmMessage, setGmMessage] = useState<{text: string, type: 'error' | 'info'} | null>(null);
 
+  const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
+  const [activeCombatState, setActiveCombatState] = useState<{queue: any[], activeIndex: number} | null>(null);
+
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     socket.emit('gm:join_room', { roomCode }, (res: any) => {
@@ -760,8 +901,19 @@ const GMView = () => {
         setCharacters(data.characters);
         setRoomState(data.roomState);
       });
+      socket.on('room:flash_draw_prepare', () => setFlashDrawState('prepare'));
+      socket.on('room:flash_draw_go', () => setFlashDrawState('go'));
+      socket.on('room:flash_draw_results', () => setFlashDrawState('results'));
+      socket.on('room:flash_draw_complete', () => setFlashDrawState('idle'));
+      socket.on('room:combat_queue_update', (data) => setActiveCombatState(data));
+
       return () => {
         socket.off('room:state_update');
+        socket.off('room:flash_draw_prepare');
+        socket.off('room:flash_draw_go');
+        socket.off('room:flash_draw_results');
+        socket.off('room:flash_draw_complete');
+        socket.off('room:combat_queue_update');
       };
     }
   }, [joined]);
@@ -820,6 +972,75 @@ const GMView = () => {
       {gmMessage && (
         <div className={`mb-4 p-3 rounded ${gmMessage.type === 'error' ? 'bg-red-800 text-white' : 'bg-slate-800 text-white'}`}>
           {gmMessage.text}
+        </div>
+      )}
+
+      {roomState === 'combat' && (
+        <div className="mb-6 p-4 bg-red-950/50 border border-red-900 rounded-lg flex flex-col gap-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-bold text-red-500">INITIATIVE PROTOCOL</h2>
+              <p className="text-sm text-slate-400">Test reaction times to establish turn order.</p>
+            </div>
+            
+            {!activeCombatState && flashDrawState === 'idle' && (
+              <button 
+                onClick={() => {
+                  socket.emit('gm:start_flash_draw', { roomCode }, (res: any) => {
+                    if (!res || !res.success) {
+                       setGmMessage({ text: 'Failed to start flash draw', type: 'error' });
+                       setTimeout(() => setGmMessage(null), 4000);
+                    }
+                  });
+                }}
+                className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded animate-pulse"
+              >
+                TRIGGER FLASH DRAW
+              </button>
+            )}
+
+            {flashDrawState === 'results' && (
+              <button 
+                onClick={() => {
+                  socket.emit('gm:confirm_initiative', { roomCode });
+                }}
+                className="px-6 py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded animate-pulse"
+              >
+                APPROVE INITIATIVE
+              </button>
+            )}
+            
+            {flashDrawState !== 'idle' && flashDrawState !== 'results' && (
+              <div className="text-red-500 font-bold animate-pulse">AWAITING DRAW...</div>
+            )}
+          </div>
+          
+          {activeCombatState && activeCombatState.queue.length > 0 && (
+            <div className="mt-4 border-t border-red-900 pt-4">
+              <h3 className="text-sm text-red-400 font-bold mb-2">ACTIVE COMBAT QUEUE</h3>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {activeCombatState.queue.map((entry, idx) => (
+                  <div key={idx} className={`px-3 py-1 rounded text-sm font-bold ${idx === activeCombatState.activeIndex ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                    {idx + 1}. {entry.name}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => socket.emit('gm:next_turn', { roomCode })}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 font-bold rounded text-sm"
+                >
+                  NEXT TURN
+                </button>
+                <button 
+                  onClick={() => socket.emit('gm:clear_initiative', { roomCode })}
+                  className="px-4 py-2 bg-red-950 hover:bg-red-900 text-red-500 font-bold rounded text-sm border border-red-900"
+                >
+                  CLEAR QUEUE
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
