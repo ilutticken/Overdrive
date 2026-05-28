@@ -683,10 +683,6 @@ const PlayerView = () => {
         setFlashDrawState('go');
       });
 
-      socket.on('room:flash_draw_results', () => {
-        setFlashDrawState('results');
-      });
-
       socket.on('room:flash_draw_complete', () => {
         setFlashDrawState('idle');
       });
@@ -725,7 +721,6 @@ const PlayerView = () => {
         socket.off('room:minigame_started');
         socket.off('room:flash_draw_prepare');
         socket.off('room:flash_draw_go');
-        socket.off('room:flash_draw_results');
         socket.off('room:flash_draw_complete');
         socket.off('room:dossier_started');
         socket.off('room:dossier_update');
