@@ -149,6 +149,9 @@ const HostView = () => {
   const alertToneRef = React.useRef<any>(null);
   const charactersRef = React.useRef(characters);
   const activeMinigameTypeRef = React.useRef(activeMinigameType);
+  const [healthEffects, setHealthEffects] = useState<Record<string, { kind: 'wound' | 'heal' }>>({});
+  const previousHealthRef = React.useRef<Map<string, number>>(new Map());
+  const healthEffectTimers = React.useRef<Record<string, number>>({});
 
   useEffect(() => {
     alertToneRef.current = new Audio('/sound/alert-beep.mp3');
@@ -162,6 +165,51 @@ const HostView = () => {
     tone.volume = 0.9;
     void tone.play().catch(() => {});
   };
+
+  useEffect(() => {
+    characters.forEach((character) => {
+      const token = character.device_token;
+      const currentHealth = Number(character.health || 0);
+      const prevHealth = previousHealthRef.current.get(token);
+
+      if (typeof prevHealth === 'number') {
+        if (currentHealth < prevHealth) {
+          setHealthEffects((existing) => ({ ...existing, [token]: { kind: 'wound' } }));
+          if (healthEffectTimers.current[token]) {
+            window.clearTimeout(healthEffectTimers.current[token]);
+          }
+          healthEffectTimers.current[token] = window.setTimeout(() => {
+            setHealthEffects((existing) => {
+              const { [token]: _removed, ...rest } = existing;
+              return rest;
+            });
+            delete healthEffectTimers.current[token];
+          }, 500);
+        } else if (currentHealth > prevHealth) {
+          setHealthEffects((existing) => ({ ...existing, [token]: { kind: 'heal' } }));
+          if (healthEffectTimers.current[token]) {
+            window.clearTimeout(healthEffectTimers.current[token]);
+          }
+          healthEffectTimers.current[token] = window.setTimeout(() => {
+            setHealthEffects((existing) => {
+              const { [token]: _removed, ...rest } = existing;
+              return rest;
+            });
+            delete healthEffectTimers.current[token];
+          }, 500);
+        }
+      }
+
+      previousHealthRef.current.set(token, currentHealth);
+    });
+  }, [characters]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(healthEffectTimers.current).forEach((timer) => window.clearTimeout(timer));
+      healthEffectTimers.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     charactersRef.current = characters;
@@ -413,6 +461,21 @@ const HostView = () => {
       ${roomState === 'combat' ? 'bg-red-950/20' : roomState === 'overdrive' ? 'bg-fuchsia-950/20' : ''}
       ${activeMinigameTarget || warningTarget ? 'bg-red-950/80' : ''}
     `}>
+      <style>{`
+        @keyframes host-card-shake {
+          0%, 100% { transform: translateX(0px) rotate(0deg); }
+          20% { transform: translateX(-4px) rotate(-1.5deg); }
+          40% { transform: translateX(4px) rotate(1.5deg); }
+          60% { transform: translateX(-2px) rotate(-0.75deg); }
+          80% { transform: translateX(2px) rotate(0.75deg); }
+        }
+
+        @keyframes host-card-heal {
+          0%, 100% { transform: scale(1); }
+          30% { transform: scale(1.03); }
+          60% { transform: scale(1.015); }
+        }
+      `}</style>
       <audio ref={audioRef} src="/sound/cyber_runner.ogg" loop />
       {isGameReady && <CityBackground />}
       {/* Result Splash Overlay */}
@@ -645,16 +708,25 @@ const HostView = () => {
               <h3 className="text-2xl text-left text-fuchsia-400 font-bold mb-6 border-b border-fuchsia-400/30 pb-2">CONNECTED OPERATIVES</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {characters.length === 0 && <p className="text-slate-500 italic col-span-full">Waiting for connections...</p>}
-                {characters.map((c, i) => (
-                  <div key={i} className={`bg-slate-800 p-4 rounded border border-slate-700 text-left transition-all ${c.is_online === 0 ? 'opacity-40 grayscale' : ''}`}>
-                    <div className="font-bold text-xl flex justify-between items-center">
-                      {c.name}
-                      {c.is_online === 0 && <span className="text-xs font-black text-red-500 bg-red-950 px-2 py-1 rounded">OFFLINE</span>}
+                {characters.map((c, i) => {
+                  const healthEffect = healthEffects[c.device_token];
+                  return (
+                    <div
+                      key={i}
+                      className={`bg-slate-800 p-4 rounded border text-left transition-all ${c.is_online === 0 ? 'opacity-40 grayscale' : ''} ${healthEffect?.kind === 'wound' ? 'border-red-500/70 shadow-[0_0_20px_rgba(239,68,68,0.5)]' : healthEffect?.kind === 'heal' ? 'border-emerald-500/70 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-slate-700'}`}
+                      style={{
+                        animation: healthEffect?.kind === 'wound' ? 'host-card-shake 0.35s ease-in-out' : healthEffect?.kind === 'heal' ? 'host-card-heal 0.45s ease-in-out' : undefined
+                      }}
+                    >
+                      <div className="font-bold text-xl flex justify-between items-center">
+                        {c.name}
+                        {c.is_online === 0 && <span className="text-xs font-black text-red-500 bg-red-950 px-2 py-1 rounded">OFFLINE</span>}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-2">HP: {c.health}/3 | ฿: {c.credits}</div>
+                      <div className="text-xs text-amber-300 mt-2">BACKGROUND: {c.background || 'Unassigned'}</div>
                     </div>
-                    <div className="text-xs text-slate-400 mt-2">HP: {c.health}/3 | ฿: {c.credits}</div>
-                    <div className="text-xs text-amber-300 mt-2">BACKGROUND: {c.background || 'Unassigned'}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -690,7 +762,10 @@ const PlayerView = () => {
   const [bluffTargetCenter, setBluffTargetCenter] = useState(50);
   const [bluffSuccessWindow, setBluffSuccessWindow] = useState(15);
   const [bluffCriticalWindow, setBluffCriticalWindow] = useState(7);
+  const [healthEffect, setHealthEffect] = useState<{ kind: 'wound' | 'heal' } | null>(null);
   const alertToneRef = React.useRef<any>(null);
+  const previousHealthRef = React.useRef<number | null>(null);
+  const healthEffectTimerRef = React.useRef<number | null>(null);
   const tapCountRef = React.useRef(0);
   const minigameReportedRef = React.useRef(false);
 
