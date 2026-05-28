@@ -308,38 +308,34 @@ const HostView = () => {
       {minigameResult.show && (
         <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm`}>
           <div className={`text-9xl font-black tracking-widest animate-bounce drop-shadow-[0_0_50px_rgba(255,255,255,0.8)] flex flex-col items-center
-            ${minigameResult.degreeOfSuccess === 'critical_success' ? 'text-purple-500' : 
-              minigameResult.degreeOfSuccess === 'success' ? 'text-green-500' : 
-              minigameResult.degreeOfSuccess === 'mixed_success' ? 'text-amber-500' : 
-              'text-red-600'}`
+            ${minigameResult.finalDisposition !== undefined
+              ? minigameResult.finalDisposition >= 3 ? 'text-emerald-500' : minigameResult.finalDisposition === 2 ? 'text-yellow-400' : 'text-red-500'
+              : minigameResult.degreeOfSuccess === 'critical_success' ? 'text-purple-500' : 
+                minigameResult.degreeOfSuccess === 'success' ? 'text-green-500' : 
+                minigameResult.degreeOfSuccess === 'mixed_success' ? 'text-amber-500' : 
+                'text-red-600'}`
           }>
-            {minigameResult.degreeOfSuccess === 'critical_success' ? 'CRITICAL SUCCESS' : 
-             minigameResult.degreeOfSuccess === 'success' ? 'SUCCESS' : 
-             minigameResult.degreeOfSuccess === 'mixed_success' ? 'MIXED SUCCESS' : 
-             minigameResult.degreeOfSuccess === 'critical_failure' ? 'CRITICAL FAILURE' : 
-             'FAILURE'}
-             <div className="text-2xl mt-4 opacity-80 uppercase tracking-[0.5em] font-normal">{minigameResult.degreeOfSuccess?.replace('_', ' ')}</div>
+            {minigameResult.finalDisposition !== undefined && (
+              <div className="text-xl uppercase tracking-[0.45em] opacity-80 mb-4">FINAL DISPOSITION</div>
+            )}
+            {minigameResult.finalDisposition !== undefined ? (
+              minigameResult.finalDisposition === 4 ? 'OBEDIENT' :
+              minigameResult.finalDisposition === 3 ? 'COMPLIANT' :
+              minigameResult.finalDisposition === 2 ? 'NEUTRAL' :
+              minigameResult.finalDisposition === 1 ? 'HOSTILE' : 'UNREASONABLE'
+            ) : (
+              minigameResult.degreeOfSuccess === 'critical_success' ? 'CRITICAL SUCCESS' : 
+              minigameResult.degreeOfSuccess === 'success' ? 'SUCCESS' : 
+              minigameResult.degreeOfSuccess === 'mixed_success' ? 'MIXED SUCCESS' : 
+              minigameResult.degreeOfSuccess === 'critical_failure' ? 'CRITICAL FAILURE' : 
+              'FAILURE'
+            )}
              {minigameResult.modifier && (
                <div className={`mt-6 px-8 py-4 rounded-2xl border text-center max-w-3xl ${minigameResult.modifier.type === 'consequence' ? 'border-orange-400/60 bg-orange-950/70 text-orange-100' : minigameResult.modifier.type === 'time' ? 'border-cyan-400/60 bg-cyan-950/70 text-cyan-100' : 'border-emerald-400/60 bg-emerald-950/70 text-emerald-100'}`}>
                  <div className="text-xs uppercase tracking-[0.35em] opacity-80">{(minigameResult.modifier.type || 'modifier').toUpperCase()} MODIFIED</div>
                  <div className="mt-2 text-4xl font-black">{minigameResult.modifier.label}</div>
                  <div className="mt-2 text-2xl font-medium">{minigameResult.modifier.description}</div>
                </div>
-             )}
-             {minigameResult.finalDisposition !== undefined && (
-                <div className={`text-4xl mt-8 font-bold animate-pulse ${
-                    minigameResult.finalDisposition === 4 ? 'text-emerald-400' : 
-                    minigameResult.finalDisposition === 3 ? 'text-emerald-500' : 
-                    minigameResult.finalDisposition === 2 ? 'text-yellow-400' : 
-                    minigameResult.finalDisposition === 1 ? 'text-orange-500' : 'text-red-500'
-                }`}>
-                   FINAL DISPOSITION: {
-                    minigameResult.finalDisposition === 4 ? 'OBEDIENT' : 
-                    minigameResult.finalDisposition === 3 ? 'COMPLIANT' : 
-                    minigameResult.finalDisposition === 2 ? 'NEUTRAL' : 
-                    minigameResult.finalDisposition === 1 ? 'HOSTILE' : 'UNREASONABLE'
-                   }
-                </div>
              )}
              </div>
              </div>
