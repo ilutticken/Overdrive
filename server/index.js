@@ -36,26 +36,28 @@ const insertRoomStmt = db.prepare('INSERT INTO rooms (room_code) VALUES (?)');
 const getCharactersStmt = db.prepare('SELECT * FROM characters WHERE room_code = ?');
 const updateCharacterPresenceStmt = db.prepare('UPDATE characters SET is_online = ? WHERE room_code = ? AND device_token = ?');
 const upsertCharacterStmt = db.prepare(`
-  INSERT INTO characters (room_code, device_token, name, meat, mind, moxie, is_online) 
-  VALUES (@room_code, @device_token, @name, @meat, @mind, @moxie, 1)
+  INSERT INTO characters (room_code, device_token, name, meat, mind, moxie, background, is_online) 
+  VALUES (@room_code, @device_token, @name, @meat, @mind, @moxie, @background, 1)
   ON CONFLICT(room_code, device_token) DO UPDATE SET 
     name = excluded.name,
     meat = excluded.meat,
     mind = excluded.mind,
     moxie = excluded.moxie,
+    background = excluded.background,
     is_online = 1
 `);
 
 // Player (persistent) prepared statements
 const getPlayerStmt = db.prepare('SELECT * FROM players WHERE device_token = ?');
 const upsertPlayerStmt = db.prepare(`
-  INSERT INTO players (device_token, name, meat, mind, moxie, health, max_health, credits, gear, status_effects, notes)
-  VALUES (@device_token, @name, @meat, @mind, @moxie, @health, @max_health, @credits, @gear, @status_effects, @notes)
+  INSERT INTO players (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes)
+  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes)
   ON CONFLICT(device_token) DO UPDATE SET
     name = excluded.name,
     meat = excluded.meat,
     mind = excluded.mind,
     moxie = excluded.moxie,
+    background = excluded.background,
     health = excluded.health,
     max_health = excluded.max_health,
     credits = excluded.credits,
@@ -65,17 +67,31 @@ const upsertPlayerStmt = db.prepare(`
     updated_at = CURRENT_TIMESTAMP
 `);
 const updatePlayerStmt = db.prepare(`
-  UPDATE players SET name = @name, meat = @meat, mind = @mind, moxie = @moxie, health = @health, max_health = @max_health, credits = @credits, gear = @gear, status_effects = @status_effects, notes = @notes, updated_at = CURRENT_TIMESTAMP WHERE device_token = @device_token
+  UPDATE players SET name = @name, meat = @meat, mind = @mind, moxie = @moxie, background = @background, health = @health, max_health = @max_health, credits = @credits, gear = @gear, status_effects = @status_effects, notes = @notes, updated_at = CURRENT_TIMESTAMP WHERE device_token = @device_token
 `);
 const getProfilesStmt = db.prepare('SELECT * FROM character_profiles WHERE device_token = ? ORDER BY last_used DESC, created_at DESC');
 const getProfileByIdStmt = db.prepare('SELECT * FROM character_profiles WHERE id = ?');
 const insertProfileStmt = db.prepare(`
-  INSERT INTO character_profiles (device_token, name, meat, mind, moxie, health, max_health, credits, gear, status_effects, notes, last_used)
-  VALUES (@device_token, @name, @meat, @mind, @moxie, @health, @max_health, @credits, @gear, @status_effects, @notes, @last_used)
+  INSERT INTO character_profiles (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes, last_used)
+  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes, @last_used)
 `);
 const updateProfileLastUsedStmt = db.prepare('UPDATE character_profiles SET last_used = ? WHERE id = ?');
 const deleteProfileStmt = db.prepare('DELETE FROM character_profiles WHERE id = ? AND device_token = ?');
 const getCharacterStmt = db.prepare('SELECT * FROM characters WHERE room_code = ? AND device_token = ?');
+const mergeCharacterRecord = (characterRecord) => {
+  const p = getPlayerStmt.get(characterRecord.device_token) || {};
+  return {
+    ...characterRecord,
+    background: p.background ?? characterRecord.background ?? '',
+    health: (p.health !== undefined && p.health !== null) ? p.health : characterRecord.health,
+    max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : characterRecord.max_health,
+    credits: (p.credits !== undefined && p.credits !== null) ? p.credits : characterRecord.credits,
+    gear: p.gear ?? characterRecord.gear,
+    status_effects: p.status_effects ?? characterRecord.status_effects,
+    notes: p.notes ?? characterRecord.notes,
+    auto_lose_on_fail: p.auto_lose_on_fail ?? 0
+  };
+};
 
 const MINIGAME_DIFFICULTY_MODIFIERS = {
   easy: [
@@ -122,19 +138,7 @@ io.on('connection', (socket) => {
         socketMap.set(socket.id, { roomCode, role: 'host' });
         
           const characters = getCharactersStmt.all(roomCode);
-          const merged = characters.map(c => {
-            const p = getPlayerStmt.get(c.device_token) || {};
-            return {
-              ...c,
-              health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
-              max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
-              credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
-              gear: p.gear ?? c.gear,
-              status_effects: p.status_effects ?? c.status_effects,
-              notes: p.notes ?? c.notes,
-              auto_lose_on_fail: p.auto_lose_on_fail ?? 0
-            };
-          });
+          const merged = characters.map(mergeCharacterRecord);
           if (callback) {
             callback({ success: true, roomCode, roomState: room.state, characters: merged });
           }
@@ -170,7 +174,7 @@ io.on('connection', (socket) => {
 
   // 2. Player joins a room
   socket.on('player:join_room', (data, callback) => {
-    const { roomCode, deviceToken, name, stats, isReconnect, profileId } = data || {};
+    const { roomCode, deviceToken, name, stats, isReconnect, profileId, background } = data || {};
     const { meat = 1, mind = 1, moxie = 1 } = stats || {};
 
     // Allow joining by selecting an existing profile (profileId) or supplying a name
@@ -198,6 +202,7 @@ io.on('connection', (socket) => {
             meat: saved.meat,
             mind: saved.mind,
             moxie: saved.moxie,
+            background: saved.background || background || '',
             health: saved.health,
             max_health: saved.max_health,
             credits: saved.credits,
@@ -219,6 +224,7 @@ io.on('connection', (socket) => {
           meat: (stats && stats.meat) || (existingPlayer && existingPlayer.meat) || meat,
           mind: (stats && stats.mind) || (existingPlayer && existingPlayer.mind) || mind,
           moxie: (stats && stats.moxie) || (existingPlayer && existingPlayer.moxie) || moxie,
+          background: background || (existingPlayer && existingPlayer.background) || '',
           health: (stats && (stats.health ?? undefined)) || (existingPlayer && existingPlayer.health) || 3,
           max_health: (stats && (stats.max_health ?? undefined)) || (existingPlayer && existingPlayer.max_health) || 3,
           credits: (stats && (stats.credits ?? undefined)) || (existingPlayer && existingPlayer.credits) || 0,
@@ -242,7 +248,8 @@ io.on('connection', (socket) => {
           name: profile.name,
           meat: profile.meat,
           mind: profile.mind,
-          moxie: profile.moxie
+          moxie: profile.moxie,
+          background: profile.background || ''
         });
       }
 
@@ -251,19 +258,7 @@ io.on('connection', (socket) => {
 
       // Fetch all characters to sync state
       const characters = getCharactersStmt.all(uppercaseRoomCode);
-      const merged = characters.map(c => {
-        const p = getPlayerStmt.get(c.device_token) || {};
-        return {
-          ...c,
-          health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
-          max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
-          credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
-          gear: p.gear ?? c.gear,
-          status_effects: p.status_effects ?? c.status_effects,
-          notes: p.notes ?? c.notes,
-          auto_lose_on_fail: p.auto_lose_on_fail ?? 0
-        };
-      });
+      const merged = characters.map(mergeCharacterRecord);
       io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: room.state });
 
       if (callback) {
@@ -298,6 +293,7 @@ io.on('connection', (socket) => {
           meat: data.meat || 1,
           mind: data.mind || 1,
           moxie: data.moxie || 1,
+          background: data.background || '',
           health: data.health || 3,
           max_health: data.max_health || 3,
           credits: data.credits || 0,
@@ -313,6 +309,7 @@ io.on('connection', (socket) => {
           meat: data.meat ?? existing.meat,
           mind: data.mind ?? existing.mind,
           moxie: data.moxie ?? existing.moxie,
+          background: data.background ?? existing.background,
           health: data.health ?? existing.health,
           max_health: data.max_health ?? existing.max_health,
           credits: data.credits ?? existing.credits,
@@ -357,7 +354,7 @@ io.on('connection', (socket) => {
 
   // Create a new persistent character profile for this device
   socket.on('player:create_profile', (data, callback) => {
-    const { deviceToken, name, meat = 1, mind = 1, moxie = 1, health = 3, max_health = 3, credits = 0, gear = '[]', status_effects = '[]', notes = '' } = data || {};
+    const { deviceToken, name, meat = 1, mind = 1, moxie = 1, background = '', health = 3, max_health = 3, credits = 0, gear = '[]', status_effects = '[]', notes = '' } = data || {};
     if (!deviceToken) return callback?.({ success: false, message: 'Missing deviceToken' });
     try {
       const info = insertProfileStmt.run({
@@ -366,6 +363,7 @@ io.on('connection', (socket) => {
         meat,
         mind,
         moxie,
+        background,
         health,
         max_health,
         credits,
@@ -405,19 +403,7 @@ io.on('connection', (socket) => {
     try {
       setPlayerAutoLoseStmt.run(enabled ? 1 : 0, deviceToken);
       const characters = getCharactersStmt.all(uppercaseRoomCode);
-      const merged = characters.map(c => {
-        const p = getPlayerStmt.get(c.device_token) || {};
-        return {
-          ...c,
-          health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
-          max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
-          credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
-          gear: p.gear ?? c.gear,
-          status_effects: p.status_effects ?? c.status_effects,
-          notes: p.notes ?? c.notes,
-          auto_lose_on_fail: p.auto_lose_on_fail ?? 0
-        };
-      });
+      const merged = characters.map(mergeCharacterRecord);
       io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: getRoomStmt.get(uppercaseRoomCode).state });
       if (callback) callback({ success: true });
     } catch (e) {
@@ -466,19 +452,7 @@ io.on('connection', (socket) => {
     socketMap.set(socket.id, { roomCode: uppercaseRoomCode, role: 'gm' });
     
     const characters = getCharactersStmt.all(uppercaseRoomCode);
-    const merged = characters.map(c => {
-      const p = getPlayerStmt.get(c.device_token) || {};
-      return {
-        ...c,
-        health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
-        max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
-        credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
-        gear: p.gear ?? c.gear,
-        status_effects: p.status_effects ?? c.status_effects,
-        notes: p.notes ?? c.notes,
-        auto_lose_on_fail: p.auto_lose_on_fail ?? 0
-      };
-    });
+    const merged = characters.map(mergeCharacterRecord);
 
     if (callback) {
       callback({ success: true, characters: merged, roomState: room.state });
@@ -496,19 +470,7 @@ io.on('connection', (socket) => {
     updateRoomStateStmt.run(newState, uppercaseRoomCode);
     
     const characters = getCharactersStmt.all(uppercaseRoomCode);
-    const merged = characters.map(c => {
-      const p = getPlayerStmt.get(c.device_token) || {};
-      return {
-        ...c,
-        health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
-        max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
-        credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
-        gear: p.gear ?? c.gear,
-        status_effects: p.status_effects ?? c.status_effects,
-        notes: p.notes ?? c.notes,
-        auto_lose_on_fail: p.auto_lose_on_fail ?? 0
-      };
-    });
+    const merged = characters.map(mergeCharacterRecord);
     io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: newState });
     
     if (callback) callback({ success: true });

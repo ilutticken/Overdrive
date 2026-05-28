@@ -78,6 +78,15 @@ const CityBackground = () => {
   );
 };
 
+const backgroundOptions = [
+  { id: 'street-fixer', label: 'Street Fixer', description: 'A veteran of the undercity who survives by reading people and adapting fast.' },
+  { id: 'corp-scion', label: 'Corporate Scion', description: 'Raised in boardrooms, this operative understands leverage, etiquette, and pressure.' },
+  { id: 'ghost-runner', label: 'Ghost Runner', description: 'A stealth-first operator built for silent movement, evasion, and quick exits.' },
+  { id: 'bio-hacker', label: 'Bio-Hacker', description: 'Tuned into body and machine limits, this operative thrives in risky augmentations.' },
+  { id: 'grizzled-veteran', label: 'Grizzled Veteran', description: 'Scarred by past wars and trusted under pressure when calm is thin.' },
+  { id: 'signal-weaver', label: 'Signal Weaver', description: 'A master of distractions, drones, and social noise that bends attention.' }
+];
+
 // --- Placeholder Components ---
 
 const Home = () => {
@@ -511,6 +520,7 @@ const HostView = () => {
                       {c.is_online === 0 && <span className="text-xs font-black text-red-500 bg-red-950 px-2 py-1 rounded">OFFLINE</span>}
                     </div>
                     <div className="text-xs text-slate-400 mt-2">HP: {c.health}/3 | ฿: {c.credits}</div>
+                    <div className="text-xs text-amber-300 mt-2">BACKGROUND: {c.background || 'Unassigned'}</div>
                   </div>
                 ))}
               </div>
@@ -533,6 +543,7 @@ const PlayerView = () => {
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [createName, setCreateName] = useState('');
   const [createArchetype, setCreateArchetype] = useState('street-sam');
+  const [createBackground, setCreateBackground] = useState(backgroundOptions[0].id);
   const [showCreate, setShowCreate] = useState(false);
 
   // Minigame State
@@ -586,10 +597,12 @@ const PlayerView = () => {
     e.preventDefault();
     const token = getDeviceToken();
     const stats = archetypes[createArchetype];
+    const selectedBackground = backgroundOptions.find((bg) => bg.id === createBackground);
     
     const payload: any = {
       roomCode,
       deviceToken: token,
+      background: selectedBackground?.label || ''
     };
 
     // If selectedProfileId exists, tell server to use that profile
@@ -601,7 +614,7 @@ const PlayerView = () => {
         setJoined(true);
         // Merge persistent profile into character if present
         if (res.profile) {
-          const merged = { ...res.character, health: res.profile.health, max_health: res.profile.max_health, credits: res.profile.credits, gear: res.profile.gear, status_effects: res.profile.status_effects, notes: res.profile.notes };
+          const merged = { ...res.character, background: res.profile.background || res.character.background || '', health: res.profile.health, max_health: res.profile.max_health, credits: res.profile.credits, gear: res.profile.gear, status_effects: res.profile.status_effects, notes: res.profile.notes };
           setCharacter(merged);
         } else {
           setCharacter(res.character);
@@ -643,12 +656,14 @@ const PlayerView = () => {
     if (e) e.preventDefault();
     const token = getDeviceToken();
     const stats = archetypes[createArchetype];
+    const selectedBackground = backgroundOptions.find((bg) => bg.id === createBackground);
     socket.emit('player:create_profile', {
       deviceToken: token,
       name: createName || 'Unnamed',
       meat: stats.meat,
       mind: stats.mind,
       moxie: stats.moxie,
+      background: selectedBackground?.label || '',
       health: 3,
       max_health: 3,
       credits: 0,
@@ -664,6 +679,7 @@ const PlayerView = () => {
         setShowCreate(false);
         setName(res.profile.name || '');
         setCreateName('');
+        setCreateBackground(backgroundOptions[0].id);
       } else {
         alert(res.message || 'Failed to create profile');
       }
@@ -1118,6 +1134,7 @@ const PlayerView = () => {
       <div className="flex flex-col items-center p-6 min-h-screen">
         <div className="w-full max-w-md border-b-2 border-fuchsia-500 pb-4 mb-6">
           <h1 className="text-3xl font-bold">{character?.name}</h1>
+          <div className="mt-2 text-sm text-amber-200">BACKGROUND: {character?.background || 'Unassigned'}</div>
           <div className="flex justify-between mt-2 text-sm text-fuchsia-300 mb-4">
             <span>SYS INTEGRITY: {character?.health}/3</span>
             <span>CREDITS: ฿{character?.credits}</span>
@@ -1225,7 +1242,23 @@ const PlayerView = () => {
                     </label>
                   ))}
                 </div>
-                <div className="text-right">
+                <div className="mt-3 border-t border-slate-700 pt-3">
+                  <div className="text-sm font-bold text-fuchsia-300 mb-2">Choose a Background</div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {backgroundOptions.map((background) => (
+                      <label key={background.id} className={`p-2 rounded border cursor-pointer transition-all ${createBackground === background.id ? 'border-amber-500 bg-amber-500/10' : 'border-slate-700 bg-slate-900 hover:border-slate-500'}`}>
+                        <div className="flex items-center gap-3">
+                          <input type="radio" name="createBackground" value={background.id} checked={createBackground === background.id} onChange={() => setCreateBackground(background.id)} className="hidden" />
+                          <div className="flex-1">
+                            <div className="font-bold text-amber-300">{background.label}</div>
+                            <div className="text-xs text-slate-400 mt-1">{background.description}</div>
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-right mt-3">
                   <button type="button" onClick={handleCreateProfile} className="px-4 py-2 bg-fuchsia-600 rounded text-white">Create</button>
                 </div>
               </div>
@@ -1240,6 +1273,7 @@ const PlayerView = () => {
                   <div>
                     <div className="font-bold">{p.name || 'Unnamed'}</div>
                     <div className="text-xs text-slate-400">MEAT:{p.meat} MIND:{p.mind} MOXIE:{p.moxie}</div>
+                    <div className="text-xs text-amber-300 mt-1">BACKGROUND: {p.background || 'Unassigned'}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <input type="radio" name="profile" checked={selectedProfileId === p.id} onChange={() => { setSelectedProfileId(p.id); setName(p.name || ''); }} />

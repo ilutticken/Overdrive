@@ -25,6 +25,7 @@ const initSchema = () => {
       meat INTEGER DEFAULT 1,
       mind INTEGER DEFAULT 1,
       moxie INTEGER DEFAULT 1,
+      background TEXT DEFAULT '',
       health INTEGER DEFAULT 3,
       credits INTEGER DEFAULT 0,
       is_online INTEGER DEFAULT 1,
@@ -38,6 +39,7 @@ const initSchema = () => {
       meat INTEGER DEFAULT 1,
       mind INTEGER DEFAULT 1,
       moxie INTEGER DEFAULT 1,
+      background TEXT DEFAULT '',
       health INTEGER DEFAULT 3,
       max_health INTEGER DEFAULT 3,
       credits INTEGER DEFAULT 0,
@@ -55,6 +57,7 @@ const initSchema = () => {
       meat INTEGER DEFAULT 1,
       mind INTEGER DEFAULT 1,
       moxie INTEGER DEFAULT 1,
+      background TEXT DEFAULT '',
       health INTEGER DEFAULT 3,
       max_health INTEGER DEFAULT 3,
       credits INTEGER DEFAULT 0,
@@ -75,6 +78,9 @@ const initSchema = () => {
 
   // Migration: add persistent fields to characters if missing
   try {
+    db.exec(`ALTER TABLE characters ADD COLUMN background TEXT DEFAULT '';`);
+  } catch (err) {}
+  try {
     db.exec(`ALTER TABLE characters ADD COLUMN gear TEXT DEFAULT '[]';`);
   } catch (err) {}
   try {
@@ -87,7 +93,13 @@ const initSchema = () => {
     db.exec(`ALTER TABLE characters ADD COLUMN max_health INTEGER DEFAULT 3;`);
   } catch (err) {}
   try {
+    db.exec(`ALTER TABLE players ADD COLUMN background TEXT DEFAULT '';`);
+  } catch (err) {}
+  try {
     db.exec(`ALTER TABLE players ADD COLUMN auto_lose_on_fail INTEGER DEFAULT 0;`);
+  } catch (err) {}
+  try {
+    db.exec(`ALTER TABLE character_profiles ADD COLUMN background TEXT DEFAULT '';`);
   } catch (err) {}
 };
 
