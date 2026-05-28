@@ -146,8 +146,22 @@ const HostView = () => {
   const [activeCombatState, setActiveCombatState] = useState<{queue: any[], activeIndex: number} | null>(null);
 
   const audioRef = React.useRef<HTMLAudioElement>(null);
+  const alertToneRef = React.useRef<any>(null);
   const charactersRef = React.useRef(characters);
   const activeMinigameTypeRef = React.useRef(activeMinigameType);
+
+  useEffect(() => {
+    alertToneRef.current = new Audio('/sound/alert-beep.mp3');
+    alertToneRef.current.preload = 'auto';
+  }, []);
+
+  const playAlertBeep = () => {
+    const tone = alertToneRef.current;
+    if (!tone) return;
+    tone.currentTime = 0;
+    tone.volume = 0.9;
+    void tone.play().catch(() => {});
+  };
 
   useEffect(() => {
     charactersRef.current = characters;
@@ -216,6 +230,7 @@ const HostView = () => {
     });
 
     socket.on('room:minigame_warning', (data) => {
+      playAlertBeep();
       setWarningTarget(data.targetDeviceToken);
       setActiveMinigameType(data.minigameType);
       setActiveMinigameDifficulty(data.difficultyTier || null);
@@ -240,6 +255,7 @@ const HostView = () => {
     });
 
     socket.on('room:dossier_started', (data) => {
+      playAlertBeep();
       setWarningTarget(null);
       setActiveDossierTarget(data.targetDeviceToken);
       setDossierDisposition(data.disposition);
@@ -303,6 +319,7 @@ const HostView = () => {
     });
 
     socket.on('room:flash_draw_prepare', () => {
+      playAlertBeep();
       setFlashDrawState('prepare');
       setInitiativeQueue([]);
     });
@@ -673,8 +690,22 @@ const PlayerView = () => {
   const [bluffTargetCenter, setBluffTargetCenter] = useState(50);
   const [bluffSuccessWindow, setBluffSuccessWindow] = useState(15);
   const [bluffCriticalWindow, setBluffCriticalWindow] = useState(7);
+  const alertToneRef = React.useRef<any>(null);
   const tapCountRef = React.useRef(0);
   const minigameReportedRef = React.useRef(false);
+
+  useEffect(() => {
+    alertToneRef.current = new Audio('/sound/alert-beep.mp3');
+    alertToneRef.current.preload = 'auto';
+  }, []);
+
+  const playAlertBeep = () => {
+    const tone = alertToneRef.current;
+    if (!tone) return;
+    tone.currentTime = 0;
+    tone.volume = 0.9;
+    void tone.play().catch(() => {});
+  };
 
   // Flash Draw State
   const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
@@ -817,6 +848,7 @@ const PlayerView = () => {
 
       socket.on('room:minigame_warning', (data) => {
         if (data.targetDeviceToken === getDeviceToken()) {
+          playAlertBeep();
           setWarningState(data.minigameType);
           setCurrentMinigameModifier(data.modifier || null);
           setCurrentMinigameDifficulty(data.difficultyTier || null);
@@ -873,6 +905,7 @@ const PlayerView = () => {
       });
 
       socket.on('room:flash_draw_prepare', () => {
+        playAlertBeep();
         setFlashDrawState('prepare');
       });
 
@@ -886,6 +919,7 @@ const PlayerView = () => {
 
       socket.on('room:dossier_started', (data) => {
         if (data.targetDeviceToken === getDeviceToken()) {
+          playAlertBeep();
           setActiveDossier(true);
           setDossierDisposition(data.disposition);
           setMinigameDuration(15000);
