@@ -118,7 +118,7 @@ const HostView = () => {
   const [activeMinigameTarget, setActiveMinigameTarget] = useState<string | null>(null);
   const [activeMinigameType, setActiveMinigameType] = useState<string | null>(null);
   const [minigameProgress, setMinigameProgress] = useState(0);
-  const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean}>({ success: false, show: false });
+  const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean, degreeOfSuccess?: string}>({ success: false, show: false });
 
   // Flash Draw State
   const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
@@ -207,7 +207,7 @@ const HostView = () => {
 
     socket.on('room:minigame_result', (data) => {
       setActiveMinigameTarget(null);
-      setMinigameResult({ success: data.success, show: true });
+      setMinigameResult({ success: data.success, show: true, degreeOfSuccess: data.degreeOfSuccess });
       
       // Hide splash after 4 seconds
       setTimeout(() => {
@@ -267,25 +267,33 @@ const HostView = () => {
       {/* Result Splash Overlay */}
       {minigameResult.show && (
         <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm`}>
-          <div className={`text-9xl font-black tracking-widest animate-bounce drop-shadow-[0_0_50px_rgba(255,255,255,0.8)]
-            ${minigameResult.success ? 'text-green-500' : 'text-red-600'}`
+          <div className={`text-9xl font-black tracking-widest animate-bounce drop-shadow-[0_0_50px_rgba(255,255,255,0.8)] flex flex-col items-center
+            ${minigameResult.degreeOfSuccess === 'critical_success' ? 'text-purple-500' : 
+              minigameResult.degreeOfSuccess === 'success' ? 'text-green-500' : 
+              minigameResult.degreeOfSuccess === 'mixed_success' ? 'text-amber-500' : 
+              'text-red-600'}`
           }>
-            {minigameResult.success ? 'SUCCESS' : 'FAILURE'}
+            {minigameResult.degreeOfSuccess === 'critical_success' ? 'CRITICAL SUCCESS' : 
+             minigameResult.degreeOfSuccess === 'success' ? 'SUCCESS' : 
+             minigameResult.degreeOfSuccess === 'mixed_success' ? 'MIXED SUCCESS' : 
+             minigameResult.degreeOfSuccess === 'critical_failure' ? 'CRITICAL FAILURE' : 
+             'FAILURE'}
+             <div className="text-2xl mt-4 opacity-80 uppercase tracking-[0.5em] font-normal">{minigameResult.degreeOfSuccess?.replace('_', ' ')}</div>
           </div>
         </div>
       )}
 
       {/* Pre-game Warning UI */}
       {warningTarget && warningCharacter && (
-        <div className={`w-full max-w-6xl flex flex-col items-center animate-pulse duration-75 ${activeMinigameType === 'deflect' ? 'text-blue-500' : 'text-red-600'}`}>
-           <div className={`text-8xl font-black mb-8 tracking-[0.1em] ${activeMinigameType === 'deflect' ? 'drop-shadow-[0_0_30px_rgba(59,130,246,1)]' : 'drop-shadow-[0_0_30px_rgba(220,38,38,1)]'}`}>
-             ⚠️ {activeMinigameType === 'deflect' ? 'KINETIC STRIKE' : 'CRITICAL INTRUSION'} ⚠️
+        <div className={`w-full max-w-6xl flex flex-col items-center animate-pulse duration-75 ${activeMinigameType === 'deflect' ? 'text-blue-500' : activeMinigameType === 'bluff' ? 'text-amber-500' : 'text-red-600'}`}>
+           <div className={`text-8xl font-black mb-8 tracking-[0.1em] ${activeMinigameType === 'deflect' ? 'drop-shadow-[0_0_30px_rgba(59,130,246,1)]' : activeMinigameType === 'bluff' ? 'drop-shadow-[0_0_30px_rgba(245,158,11,1)]' : 'drop-shadow-[0_0_30px_rgba(220,38,38,1)]'}`}>
+             ⚠️ {activeMinigameType === 'deflect' ? 'KINETIC STRIKE' : activeMinigameType === 'bluff' ? 'NEURAL SPIKE' : 'CRITICAL INTRUSION'} ⚠️
            </div>
            <h3 className="text-5xl text-white mt-4 tracking-widest">
-             TARGET LOCKED: <span className={`font-bold ${activeMinigameType === 'deflect' ? 'text-blue-400' : 'text-red-500'}`}>{warningCharacter.name}</span>
+             TARGET LOCKED: <span className={`font-bold ${activeMinigameType === 'deflect' ? 'text-blue-400' : activeMinigameType === 'bluff' ? 'text-amber-400' : 'text-red-500'}`}>{warningCharacter.name}</span>
            </h3>
-           <div className={`mt-12 text-3xl font-mono tracking-[0.3em] animate-bounce ${activeMinigameType === 'deflect' ? 'text-blue-300' : 'text-red-400'}`}>
-             {activeMinigameType === 'deflect' ? 'PREPARE TO DEFLECT' : 'BRACE FOR FEEDBACK'}
+           <div className={`mt-12 text-3xl font-mono tracking-[0.3em] animate-bounce ${activeMinigameType === 'deflect' ? 'text-blue-300' : activeMinigameType === 'bluff' ? 'text-amber-300' : 'text-red-400'}`}>
+             {activeMinigameType === 'deflect' ? 'PREPARE TO DEFLECT' : activeMinigameType === 'bluff' ? 'MAINTAIN RESOLVE' : 'BRACE FOR FEEDBACK'}
            </div>
         </div>
       )}
@@ -293,8 +301,8 @@ const HostView = () => {
       {/* Active Minigame UI */}
       {activeMinigameTarget && activeCharacter && (
         <div className="w-full max-w-6xl flex flex-col items-center animate-in fade-in zoom-in duration-300">
-           <h2 className={`text-6xl font-black mb-8 animate-pulse ${activeMinigameType === 'deflect' ? 'text-blue-500' : 'text-red-500'}`}>
-             {activeMinigameType === 'deflect' ? 'DEFLECTION PROTOCOL ACTIVE' : 'OVERLOAD PROTOCOL INITIATED'}
+           <h2 className={`text-6xl font-black mb-8 animate-pulse ${activeMinigameType === 'deflect' ? 'text-blue-500' : activeMinigameType === 'bluff' ? 'text-amber-500' : 'text-red-500'}`}>
+             {activeMinigameType === 'deflect' ? 'DEFLECTION PROTOCOL ACTIVE' : activeMinigameType === 'bluff' ? 'BLUFF PROTOCOL ACTIVE' : 'OVERLOAD PROTOCOL INITIATED'}
            </h2>
            <h3 className="text-4xl text-white mb-12">OPERATIVE: <span className="text-fuchsia-400">{activeCharacter.name}</span></h3>
            
@@ -313,6 +321,15 @@ const HostView = () => {
            {activeMinigameType === 'deflect' && (
              <div className="w-full max-w-2xl bg-slate-900 border-4 border-blue-900 h-16 rounded-full flex items-center justify-center relative shadow-[0_0_30px_rgba(59,130,246,0.5)]">
                 <div className="text-2xl font-black text-blue-400 tracking-widest animate-pulse">AWAITING IMPACT...</div>
+             </div>
+           )}
+
+           {activeMinigameType === 'bluff' && (
+             <div className="w-full max-w-2xl bg-slate-900 border-4 border-amber-900 h-16 rounded-full flex items-center justify-center relative shadow-[0_0_30px_rgba(245,158,11,0.5)] overflow-hidden">
+                <div className="absolute inset-0 bg-amber-900/30"></div>
+                <div className="absolute left-0 top-0 bottom-0 w-1/4 bg-amber-500/50 blur-xl animate-pulse"></div>
+                <div className="absolute left-[70%] right-[15%] top-0 bottom-0 border-x-4 border-green-500 bg-green-500/20 z-10"></div>
+                <div className="z-20 text-2xl font-black text-amber-400 tracking-widest drop-shadow-md animate-pulse">MAINTAINING RESOLVE...</div>
              </div>
            )}
         </div>
@@ -422,6 +439,7 @@ const PlayerView = () => {
   const [timeLeft, setTimeLeft] = useState(3000); // Dynamic based on stats
   const [minigameDuration, setMinigameDuration] = useState(3000);
   const [tapCount, setTapCount] = useState(0);
+  const tapCountRef = React.useRef(0);
   const minigameReportedRef = React.useRef(false);
 
   // Flash Draw State
@@ -567,6 +585,7 @@ const PlayerView = () => {
                else if (character.mind >= 2) startingTime = 4000;
             }
             setTapCount(0);
+            tapCountRef.current = 0;
           } else if (data.minigameType === 'deflect') {
             if (character) {
                if (character.meat >= 4) startingTime = 5000;
@@ -621,7 +640,18 @@ const PlayerView = () => {
             // Time up logic handled here to ensure it fires once
             if (!minigameReportedRef.current) {
               minigameReportedRef.current = true;
-              handleMinigameComplete(false);
+              if (activeMinigame === 'overload') {
+                const finalTaps = tapCountRef.current;
+                let degreeOfSuccess = 'failure';
+                if (finalTaps < 14) degreeOfSuccess = 'critical_failure';
+                else if (finalTaps <= 16) degreeOfSuccess = 'failure';
+                else if (finalTaps <= 19) degreeOfSuccess = 'mixed_success';
+                else if (finalTaps <= 22) degreeOfSuccess = 'success';
+                else degreeOfSuccess = 'critical_success';
+                handleMinigameComplete(degreeOfSuccess);
+              } else {
+                 handleMinigameComplete('failure'); // Run out of time is a failure for all currently
+              }
             }
             return 0;
           }
@@ -637,40 +667,65 @@ const PlayerView = () => {
 
     const newCount = tapCount + 1;
     setTapCount(newCount);
+    tapCountRef.current = newCount;
     
     socket.emit('player:minigame_progress', {
       roomCode: character.room_code,
       deviceToken: getDeviceToken(),
       progress: newCount
     });
-
-    if (newCount >= 15) {
-      if (!minigameReportedRef.current) {
-        minigameReportedRef.current = true;
-        handleMinigameComplete(true);
-      }
-    }
   };
 
   const handleDeflectTap = () => {
     if (activeMinigame !== 'deflect' || timeLeft <= 0 || minigameReportedRef.current) return;
-    
+
     // Scale goes from 100 to 0
     const currentScale = (timeLeft / minigameDuration) * 100;
-    
-    // Target zone is between 20 and 40
-    const success = currentScale >= 20 && currentScale <= 40;
-    
+
+    let degreeOfSuccess = 'failure';
+    // Target zone is visually centered around 40% scale
+    if (currentScale >= 37 && currentScale <= 43) {
+      degreeOfSuccess = 'critical_success';
+    } else if (currentScale >= 34 && currentScale <= 46) {
+      degreeOfSuccess = 'success';
+    } else if (currentScale >= 30 && currentScale <= 50) {
+      degreeOfSuccess = 'mixed_success';
+    } else if (currentScale < 20 || currentScale > 60) {
+      degreeOfSuccess = 'critical_failure';
+    }
+
     minigameReportedRef.current = true;
-    handleMinigameComplete(success);
+    handleMinigameComplete(degreeOfSuccess);
   };
 
-  const handleMinigameComplete = (success: boolean) => {
+  const handleBluffTap = () => {
+    if (activeMinigame !== 'bluff' || timeLeft <= 0 || minigameReportedRef.current) return;
+
+    // Sweeps back and forth 3 times over the duration
+    const sweep = Math.abs(Math.sin((timeLeft / minigameDuration) * Math.PI * 3)) * 100;
+
+    let degreeOfSuccess = 'failure';
+    // Target zone is visually between 70% and 85%
+    if (sweep >= 74 && sweep <= 81) {
+      degreeOfSuccess = 'critical_success';
+    } else if (sweep >= 70 && sweep <= 85) {
+      degreeOfSuccess = 'success';
+    } else if (sweep >= 65 && sweep <= 90) {
+      degreeOfSuccess = 'mixed_success';
+    } else if (sweep < 55 || sweep > 100) {
+      degreeOfSuccess = 'critical_failure';
+    }
+
+    minigameReportedRef.current = true;
+    handleMinigameComplete(degreeOfSuccess);
+  };
+  const handleMinigameComplete = (degreeOfSuccess: string) => {
     setActiveMinigame(null);
     socket.emit('player:minigame_complete', {
       roomCode: character.room_code,
       deviceToken: getDeviceToken(),
-      success
+      success: degreeOfSuccess === 'success' || degreeOfSuccess === 'critical_success' || degreeOfSuccess === 'mixed_success',
+      degreeOfSuccess
     });
     // Reset reported flag shortly after to allow future minigames
     setTimeout(() => { minigameReportedRef.current = false; }, 1000);
@@ -740,6 +795,20 @@ const PlayerView = () => {
       );
     }
 
+    if (warningState === 'bluff') {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-amber-950/90 border-8 border-amber-600 animate-pulse duration-75">
+          <h2 className="text-5xl font-black text-amber-500 mb-6 text-center drop-shadow-[0_0_20px_rgba(245,158,11,0.9)]">⚠️ INCOMING ⚠️</h2>
+          <div className="text-3xl font-bold text-white text-center tracking-widest mt-8">
+            NEURAL SPIKE<br/>DETECTED
+          </div>
+          <div className="mt-12 text-xl text-amber-300 tracking-[0.2em] animate-bounce">
+            MAINTAIN RESOLVE
+          </div>
+        </div>
+      );
+    }
+
     if (activeMinigame === 'overload') {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-red-950">
@@ -750,7 +819,7 @@ const PlayerView = () => {
             onPointerDown={handleTap} // Better than onClick for fast mobile taps
             className="w-64 h-64 rounded-full bg-red-600 border-8 border-red-800 shadow-[0_0_50px_rgba(220,38,38,0.8)] active:bg-red-500 active:scale-95 transition-all flex items-center justify-center select-none"
           >
-            <span className="text-6xl font-black text-white">{tapCount} / 15</span>
+            <span className="text-6xl font-black text-white">{tapCount}</span>
           </button>
           
           <p className="mt-12 text-slate-400 text-lg">MASH TO CRASH ASSET!</p>
@@ -769,8 +838,10 @@ const PlayerView = () => {
           <div className="text-xl font-bold text-white mb-8">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
           
           <div className="relative w-80 h-80 flex items-center justify-center">
-             {/* The Target Zone (30% to 50% scale, but effectively we said 20 to 40 above) */}
-             <div className="absolute w-32 h-32 rounded-full border-8 border-green-500/50 shadow-[0_0_20px_rgba(34,197,94,0.5)] pointer-events-none"></div>
+             {/* Mixed success bounds (30% to 50%) */}
+             <div className="absolute rounded-full border-green-500/20 pointer-events-none" style={{ width: '50%', height: '50%', borderWidth: '32px' }}></div>
+             {/* Target Zone (Critical Success 37% to 43%) */}
+             <div className="absolute rounded-full border-green-400 shadow-[0_0_20px_rgba(34,197,94,0.8)] pointer-events-none" style={{ width: '43%', height: '43%', borderWidth: '9px' }}></div>
              
              {/* The Shrinking Arc */}
              <div 
@@ -785,6 +856,34 @@ const PlayerView = () => {
           </div>
           
           <p className="mt-12 text-slate-400 text-lg">TAP WHEN RINGS ALIGN!</p>
+        </div>
+      );
+    }
+
+    if (activeMinigame === 'bluff') {
+      const sweep = Math.abs(Math.sin((timeLeft / minigameDuration) * Math.PI * 3)) * 100;
+      return (
+        <div 
+          className="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-950 cursor-pointer"
+          onPointerDown={handleBluffTap}
+        >
+          <h2 className="text-4xl font-black text-amber-500 mb-2 animate-pulse">RESOLVE</h2>
+          <div className="text-xl font-bold text-white mb-8">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          
+          <div className="relative w-full max-w-sm h-16 bg-amber-950 rounded-full border-4 border-amber-900 overflow-hidden shadow-[0_0_20px_rgba(245,158,11,0.5)]">
+             {/* Mixed Success Zone (65% to 90%) */}
+             <div className="absolute top-0 bottom-0 left-[65%] right-[10%] bg-green-500/20 border-x-2 border-green-500/50"></div>
+             {/* Critical Success Zone (74% to 81%) */}
+             <div className="absolute top-0 bottom-0 left-[74%] right-[19%] bg-green-400/60 border-x-4 border-green-400"></div>
+             
+             {/* Moving Bar */}
+             <div 
+               className="absolute top-0 bottom-0 w-4 bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,1)] transition-all duration-75"
+               style={{ left: `calc(${Math.min(95, Math.max(0, sweep))}% - 8px)` }}
+             ></div>
+          </div>
+          
+          <p className="mt-12 text-slate-400 text-lg text-center">TAP IN THE GREEN ZONE<br/>TO MAINTAIN RESOLVE!</p>
         </div>
       );
     }
@@ -1185,6 +1284,26 @@ const GMView = () => {
                 disabled={c.is_online === 0}
               >
                 TRIGGER DEFLECT (MEAT)
+              </button>
+
+              <button 
+                onClick={() => {
+                  socket.emit('gm:start_minigame', {
+                    roomCode,
+                    targetDeviceToken: c.device_token,
+                    minigameType: 'bluff'
+                  }, (res: any) => {
+                    if (!res || !res.success) {
+                      const msg = (res && res.message) || 'Failed to start minigame';
+                      setGmMessage({ text: msg, type: 'error' });
+                      setTimeout(() => setGmMessage(null), 4000);
+                    }
+                  });
+                }}
+                className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded text-sm transition-colors"
+                disabled={c.is_online === 0}
+              >
+                TRIGGER BLUFF (MOXIE)
               </button>
             </div>
             <div className="mt-2 flex gap-2 items-center">

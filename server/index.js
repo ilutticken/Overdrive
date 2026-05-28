@@ -557,12 +557,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('player:minigame_complete', (data) => {
-    const { roomCode, deviceToken, success } = data;
+    const { roomCode, deviceToken, success, degreeOfSuccess } = data;
     if (!roomCode || !deviceToken) return;
-    
+
     const uppercaseRoomCode = roomCode.toUpperCase();
-    console.log(`Minigame completed for ${deviceToken} in room ${uppercaseRoomCode}. Success: ${success}`);
-    
+    console.log(`Minigame completed for ${deviceToken} in room ${uppercaseRoomCode}. Success: ${success}, Degree: ${degreeOfSuccess}`);
+
     // Only process completion if a minigame was active for this room
     if (!activeMinigames.has(uppercaseRoomCode)) {
       console.log('Ignoring minigame completion: no active minigame for room', uppercaseRoomCode);
@@ -571,13 +571,13 @@ io.on('connection', (socket) => {
 
     io.to(uppercaseRoomCode).emit('room:minigame_result', {
       deviceToken,
-      success
+      success,
+      degreeOfSuccess
     });
     // If player failed and has auto_lose enabled, decrement health
     try {
       const persistent = getPlayerStmt.get(deviceToken);
-      if (!success && persistent && persistent.auto_lose_on_fail === 1) {
-        const newHealth = Math.max(0, (persistent.health || 0) - 1);
+      if (!success && persistent && persistent.auto_lose_on_fail === 1) {        const newHealth = Math.max(0, (persistent.health || 0) - 1);
         updatePlayerHealthStmt.run(newHealth, deviceToken);
         updateCharacterHealthStmt.run(newHealth, uppercaseRoomCode, deviceToken);
         const characters = getCharactersStmt.all(uppercaseRoomCode);
@@ -621,8 +621,8 @@ io.on('connection', (socket) => {
     setTimeout(() => {
       const startTime = Date.now();
       const initialQueue = [
-        { name: 'Corporate Drone', reactionTime: 180, isEnemy: true },
-        { name: 'Security Guard', reactionTime: 300, isEnemy: true }
+        { name: 'Corporate Drone', reactionTime: 500, isEnemy: true },
+        { name: 'Security Guard', reactionTime: 700, isEnemy: true }
       ];
       activeFlashDraws.set(uppercaseRoomCode, { startTime, queue: initialQueue });
       io.to(uppercaseRoomCode).emit('room:flash_draw_go', { queue: initialQueue });
