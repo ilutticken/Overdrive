@@ -132,6 +132,13 @@ const HostView = () => {
   const [activeMinigameModifier, setActiveMinigameModifier] = useState<any>(null);
   const [minigameProgress, setMinigameProgress] = useState(0);
   const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean, degreeOfSuccess?: string, finalDisposition?: number, modifier?: any, difficultyTier?: string}>({ success: false, show: false });
+  const [recentResults, setRecentResults] = useState<Array<{
+    kind: 'minigame' | 'dossier';
+    targetName: string;
+    label: string;
+    detail: string;
+    tone: string;
+  }>>([]);
 
   // Flash Draw State
   const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
@@ -139,6 +146,16 @@ const HostView = () => {
   const [activeCombatState, setActiveCombatState] = useState<{queue: any[], activeIndex: number} | null>(null);
 
   const audioRef = React.useRef<HTMLAudioElement>(null);
+  const charactersRef = React.useRef(characters);
+  const activeMinigameTypeRef = React.useRef(activeMinigameType);
+
+  useEffect(() => {
+    charactersRef.current = characters;
+  }, [characters]);
+
+  useEffect(() => {
+    activeMinigameTypeRef.current = activeMinigameType;
+  }, [activeMinigameType]);
 
   const isGameReady = gmOnline && characters.filter(c => c.is_online === 1).length >= 1;
 
@@ -238,6 +255,38 @@ const HostView = () => {
       setActiveDossierTarget(null);
       setActiveMinigameDifficulty(null);
       setActiveMinigameModifier(null);
+
+      const completedMinigameType = activeMinigameTypeRef.current;
+      setActiveMinigameType(null);
+
+      const isDossierResult = data.finalDisposition !== undefined;
+      const targetCharacter = charactersRef.current.find((character) => character.device_token === data.deviceToken);
+      const targetName = targetCharacter?.name || 'UNKNOWN OPERATIVE';
+      const minigameName = isDossierResult ? 'DOSSIER' : formatMinigameName(completedMinigameType);
+      const label = isDossierResult
+        ? dispositionLabelMap[data.finalDisposition]
+        : resultLabelMap[data.degreeOfSuccess] || 'UNKNOWN';
+
+      setRecentResults((prev) => {
+        const entry: {
+          kind: 'minigame' | 'dossier';
+          targetName: string;
+          label: string;
+          detail: string;
+          tone: string;
+        } = {
+          kind: isDossierResult ? 'dossier' : 'minigame',
+          targetName,
+          label,
+          detail: minigameName,
+          tone: isDossierResult
+            ? dispositionToneMap[data.finalDisposition] || 'border-slate-400/60 bg-slate-950/60 text-slate-100'
+            : resultToneMap[data.degreeOfSuccess] || 'border-slate-400/60 bg-slate-950/60 text-slate-100'
+        };
+
+        return [entry, ...prev].slice(0, 3);
+      });
+
       setMinigameResult({
         success: data.success,
         show: true,
@@ -297,6 +346,51 @@ const HostView = () => {
   const activeCharacter = characters.find(c => c.device_token === (activeMinigameTarget || activeDossierTarget));
   const warningCharacter = characters.find(c => c.device_token === warningTarget);
 
+  const resultLabelMap: Record<string, string> = {
+    critical_success: 'CRITICAL SUCCESS',
+    success: 'SUCCESS',
+    mixed_success: 'MIXED SUCCESS',
+    failure: 'FAILURE',
+    critical_failure: 'CRITICAL FAILURE'
+  };
+
+  const dispositionLabelMap: Record<number, string> = {
+    4: 'OBEDIENT',
+    3: 'COMPLIANT',
+    2: 'NEUTRAL',
+    1: 'HOSTILE',
+    0: 'UNREASONABLE'
+  };
+
+  const resultToneMap: Record<string, string> = {
+    critical_success: 'border-purple-400/60 bg-purple-950/60 text-purple-100',
+    success: 'border-emerald-400/60 bg-emerald-950/60 text-emerald-100',
+    mixed_success: 'border-amber-400/60 bg-amber-950/60 text-amber-100',
+    failure: 'border-red-400/60 bg-red-950/60 text-red-100',
+    critical_failure: 'border-rose-400/60 bg-rose-950/60 text-rose-100'
+  };
+
+  const dispositionToneMap: Record<number, string> = {
+    4: 'border-emerald-400/60 bg-emerald-950/60 text-emerald-100',
+    3: 'border-green-400/60 bg-green-950/60 text-green-100',
+    2: 'border-yellow-400/60 bg-yellow-950/60 text-yellow-100',
+    1: 'border-orange-400/60 bg-orange-950/60 text-orange-100',
+    0: 'border-rose-400/60 bg-rose-950/60 text-rose-100'
+  };
+
+  const formatMinigameName = (minigameType?: string | null) => {
+    if (minigameType === 'deflect') return 'DEFLECT';
+    if (minigameType === 'bluff') return 'BLUFF';
+    if (minigameType === 'overload') return 'OVERLOAD';
+    return 'MINIGAME';
+  };
+
+  useEffect(() => {
+    if (!isGameReady) {
+      setRecentResults([]);
+    }
+  }, [isGameReady]);
+
   return (
     <div className={`relative flex flex-col items-center justify-center min-h-screen p-8 text-center transition-colors duration-500 overflow-hidden
       ${roomState === 'combat' ? 'bg-red-950/20' : roomState === 'overdrive' ? 'bg-fuchsia-950/20' : ''}
@@ -341,11 +435,36 @@ const HostView = () => {
              </div>
              )}
 
+      {isGameReady && !activeMinigameTarget && !warningTarget && !activeDossierTarget && flashDrawState === 'idle' && (
+        <div className="absolute right-6 top-6 z-40 w-80 rounded-2xl border border-white/10 bg-slate-950/85 p-4 text-left backdrop-blur-md shadow-2xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-[0.35em] text-cyan-200">LAST 3 RESULTS</h2>
+            <div className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.35em] text-cyan-100">Live</div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {recentResults.length === 0 ? (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-4 text-sm text-slate-300">
+                No results yet.
+              </div>
+            ) : (
+              recentResults.map((entry, index) => (
+                <div key={`${entry.label}-${entry.targetName}-${index}`} className={`rounded-xl border px-3 py-2 ${entry.tone}`}>
+                  <div className="mt-1 text-xl font-black tracking-wide">{entry.detail}</div>
+                  <div className="mt-1 text-base font-bold uppercase tracking-[0.3em] opacity-95">{entry.label}</div>
+                  <div className="mt-1 text-xs uppercase tracking-[0.25em] opacity-85">{entry.targetName}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Pre-game Warning UI */}
       {warningTarget && warningCharacter && (
         <div className={`w-full max-w-6xl flex flex-col items-center animate-pulse duration-75 ${activeMinigameType === 'deflect' ? 'text-blue-500' : activeMinigameType === 'bluff' ? 'text-amber-500' : 'text-red-600'}`}>
            <div className={`text-8xl font-black mb-8 tracking-[0.1em] ${activeMinigameType === 'deflect' ? 'drop-shadow-[0_0_30px_rgba(59,130,246,1)]' : activeMinigameType === 'bluff' ? 'drop-shadow-[0_0_30px_rgba(245,158,11,1)]' : 'drop-shadow-[0_0_30px_rgba(220,38,38,1)]'}`}>
-             ⚠️ {activeMinigameType === 'deflect' ? 'KINETIC STRIKE' : activeMinigameType === 'bluff' ? 'NEURAL SPIKE' : 'CRITICAL INTRUSION'} ⚠️
+             ⚠️ {activeMinigameType === 'deflect' ? 'DEFLECT' : activeMinigameType === 'bluff' ? 'BLUFF' : 'CRITICAL INTRUSION'} ⚠️
            </div>
            <h3 className="text-5xl text-white mt-4 tracking-widest">
              TARGET LOCKED: <span className={`font-bold ${activeMinigameType === 'deflect' ? 'text-blue-400' : activeMinigameType === 'bluff' ? 'text-amber-400' : 'text-red-500'}`}>{warningCharacter.name}</span>
@@ -934,7 +1053,7 @@ const PlayerView = () => {
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-red-950/90 border-8 border-red-600 animate-pulse duration-75">
           <h2 className="text-5xl font-black text-red-500 mb-6 text-center drop-shadow-[0_0_20px_rgba(220,38,38,0.9)]">⚠️ INCOMING ⚠️</h2>
           <div className="text-3xl font-bold text-white text-center tracking-widest mt-8">
-            NEURAL SPIKE<br/>DETECTED
+            BLUFF<br/>DETECTED
           </div>
           <div className="mt-12 text-xl text-red-300 tracking-[0.2em] animate-bounce">
             PREPARE TO OVERLOAD
@@ -955,7 +1074,7 @@ const PlayerView = () => {
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-blue-950/90 border-8 border-blue-600 animate-pulse duration-75">
           <h2 className="text-5xl font-black text-blue-500 mb-6 text-center drop-shadow-[0_0_20px_rgba(59,130,246,0.9)]">⚠️ INCOMING ⚠️</h2>
           <div className="text-3xl font-bold text-white text-center tracking-widest mt-8">
-            KINETIC STRIKE<br/>DETECTED
+            DEFLECT<br/>DETECTED
           </div>
           <div className="mt-12 text-xl text-blue-300 tracking-[0.2em] animate-bounce">
             PREPARE TO DEFLECT
@@ -976,7 +1095,7 @@ const PlayerView = () => {
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-amber-950/90 border-8 border-amber-600 animate-pulse duration-75">
           <h2 className="text-5xl font-black text-amber-500 mb-6 text-center drop-shadow-[0_0_20px_rgba(245,158,11,0.9)]">⚠️ INCOMING ⚠️</h2>
           <div className="text-3xl font-bold text-white text-center tracking-widest mt-8">
-            NEURAL SPIKE<br/>DETECTED
+            BLUFF<br/>DETECTED
           </div>
           <div className="mt-12 text-xl text-amber-300 tracking-[0.2em] animate-bounce">
             MAINTAIN RESOLVE
