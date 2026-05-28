@@ -116,6 +116,7 @@ const HostView = () => {
   // Minigame Display State
   const [warningTarget, setWarningTarget] = useState<string | null>(null);
   const [activeMinigameTarget, setActiveMinigameTarget] = useState<string | null>(null);
+  const [activeMinigameType, setActiveMinigameType] = useState<string | null>(null);
   const [minigameProgress, setMinigameProgress] = useState(0);
   const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean}>({ success: false, show: false });
 
@@ -186,12 +187,14 @@ const HostView = () => {
 
     socket.on('room:minigame_warning', (data) => {
       setWarningTarget(data.targetDeviceToken);
+      setActiveMinigameType(data.minigameType);
       setMinigameResult({ success: false, show: false });
     });
 
     socket.on('room:minigame_started', (data) => {
       setWarningTarget(null);
       setActiveMinigameTarget(data.targetDeviceToken);
+      setActiveMinigameType(data.minigameType);
       setMinigameProgress(0);
       setMinigameResult({ success: false, show: false });
     });
@@ -274,15 +277,15 @@ const HostView = () => {
 
       {/* Pre-game Warning UI */}
       {warningTarget && warningCharacter && (
-        <div className="w-full max-w-6xl flex flex-col items-center animate-pulse duration-75">
-           <div className="text-8xl font-black text-red-600 mb-8 tracking-[0.1em] drop-shadow-[0_0_30px_rgba(220,38,38,1)]">
-             ⚠️ CRITICAL INTRUSION ⚠️
+        <div className={`w-full max-w-6xl flex flex-col items-center animate-pulse duration-75 ${activeMinigameType === 'deflect' ? 'text-blue-500' : 'text-red-600'}`}>
+           <div className={`text-8xl font-black mb-8 tracking-[0.1em] ${activeMinigameType === 'deflect' ? 'drop-shadow-[0_0_30px_rgba(59,130,246,1)]' : 'drop-shadow-[0_0_30px_rgba(220,38,38,1)]'}`}>
+             ⚠️ {activeMinigameType === 'deflect' ? 'KINETIC STRIKE' : 'CRITICAL INTRUSION'} ⚠️
            </div>
            <h3 className="text-5xl text-white mt-4 tracking-widest">
-             TARGET LOCKED: <span className="text-red-500 font-bold">{warningCharacter.name}</span>
+             TARGET LOCKED: <span className={`font-bold ${activeMinigameType === 'deflect' ? 'text-blue-400' : 'text-red-500'}`}>{warningCharacter.name}</span>
            </h3>
-           <div className="mt-12 text-3xl text-red-400 font-mono tracking-[0.3em] animate-bounce">
-             BRACE FOR FEEDBACK
+           <div className={`mt-12 text-3xl font-mono tracking-[0.3em] animate-bounce ${activeMinigameType === 'deflect' ? 'text-blue-300' : 'text-red-400'}`}>
+             {activeMinigameType === 'deflect' ? 'PREPARE TO DEFLECT' : 'BRACE FOR FEEDBACK'}
            </div>
         </div>
       )}
@@ -290,18 +293,28 @@ const HostView = () => {
       {/* Active Minigame UI */}
       {activeMinigameTarget && activeCharacter && (
         <div className="w-full max-w-6xl flex flex-col items-center animate-in fade-in zoom-in duration-300">
-           <h2 className="text-6xl font-black text-red-500 mb-8 animate-pulse">OVERLOAD PROTOCOL INITIATED</h2>
+           <h2 className={`text-6xl font-black mb-8 animate-pulse ${activeMinigameType === 'deflect' ? 'text-blue-500' : 'text-red-500'}`}>
+             {activeMinigameType === 'deflect' ? 'DEFLECTION PROTOCOL ACTIVE' : 'OVERLOAD PROTOCOL INITIATED'}
+           </h2>
            <h3 className="text-4xl text-white mb-12">OPERATIVE: <span className="text-fuchsia-400">{activeCharacter.name}</span></h3>
            
-           <div className="w-full bg-slate-900 border-4 border-red-900 h-24 rounded-full overflow-hidden relative shadow-[0_0_30px_rgba(220,38,38,0.5)]">
-             <div 
-               className="h-full bg-red-600 transition-all duration-100 ease-out"
-               style={{ width: `${(minigameProgress / 15) * 100}%` }}
-             ></div>
-             <div className="absolute inset-0 flex items-center justify-center text-4xl font-black text-white mix-blend-difference">
-                {minigameProgress} / 15 TAPS
+           {activeMinigameType === 'overload' && (
+             <div className="w-full bg-slate-900 border-4 border-red-900 h-24 rounded-full overflow-hidden relative shadow-[0_0_30px_rgba(220,38,38,0.5)]">
+               <div 
+                 className="h-full bg-red-600 transition-all duration-100 ease-out"
+                 style={{ width: `${(minigameProgress / 15) * 100}%` }}
+               ></div>
+               <div className="absolute inset-0 flex items-center justify-center text-4xl font-black text-white mix-blend-difference">
+                  {minigameProgress} / 15 TAPS
+               </div>
              </div>
-           </div>
+           )}
+           
+           {activeMinigameType === 'deflect' && (
+             <div className="w-full max-w-2xl bg-slate-900 border-4 border-blue-900 h-16 rounded-full flex items-center justify-center relative shadow-[0_0_30px_rgba(59,130,246,0.5)]">
+                <div className="text-2xl font-black text-blue-400 tracking-widest animate-pulse">AWAITING IMPACT...</div>
+             </div>
+           )}
         </div>
       )}
 
@@ -407,6 +420,7 @@ const PlayerView = () => {
   const [warningState, setWarningState] = useState<string | null>(null);
   const [activeMinigame, setActiveMinigame] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(3000); // Dynamic based on stats
+  const [minigameDuration, setMinigameDuration] = useState(3000);
   const [tapCount, setTapCount] = useState(0);
   const minigameReportedRef = React.useRef(false);
 
@@ -538,24 +552,32 @@ const PlayerView = () => {
       });
 
       socket.on('room:minigame_warning', (data) => {
-        if (data.targetDeviceToken === getDeviceToken() && data.minigameType === 'overload') {
-          setWarningState('overload');
+        if (data.targetDeviceToken === getDeviceToken()) {
+          setWarningState(data.minigameType);
         }
       });
 
       socket.on('room:minigame_started', (data) => {
-        if (data.targetDeviceToken === getDeviceToken() && data.minigameType === 'overload') {
-          // Dynamic Timer based on Mind Stat
-          // Mind 1: 3.0s | Mind 2-3: 4.0s | Mind 4+: 5.5s
+        if (data.targetDeviceToken === getDeviceToken()) {
           let startingTime = 3000;
-          if (character) {
-             if (character.mind >= 4) startingTime = 5500;
-             else if (character.mind >= 2) startingTime = 4000;
+          
+          if (data.minigameType === 'overload') {
+            if (character) {
+               if (character.mind >= 4) startingTime = 5500;
+               else if (character.mind >= 2) startingTime = 4000;
+            }
+            setTapCount(0);
+          } else if (data.minigameType === 'deflect') {
+            if (character) {
+               if (character.meat >= 4) startingTime = 5000;
+               else if (character.meat >= 2) startingTime = 3500;
+               else startingTime = 2000;
+            }
           }
           
           setWarningState(null);
-          setActiveMinigame('overload');
-          setTapCount(0);
+          setActiveMinigame(data.minigameType);
+          setMinigameDuration(startingTime);
           setTimeLeft(startingTime);
         }
       });
@@ -591,7 +613,7 @@ const PlayerView = () => {
   // Minigame Timer Logic
   useEffect(() => {
     let timer: number;
-    if (activeMinigame === 'overload' && timeLeft > 0) {
+    if (activeMinigame && timeLeft > 0) {
       timer = window.setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 100) {
@@ -628,6 +650,19 @@ const PlayerView = () => {
         handleMinigameComplete(true);
       }
     }
+  };
+
+  const handleDeflectTap = () => {
+    if (activeMinigame !== 'deflect' || timeLeft <= 0 || minigameReportedRef.current) return;
+    
+    // Scale goes from 100 to 0
+    const currentScale = (timeLeft / minigameDuration) * 100;
+    
+    // Target zone is between 20 and 40
+    const success = currentScale >= 20 && currentScale <= 40;
+    
+    minigameReportedRef.current = true;
+    handleMinigameComplete(success);
   };
 
   const handleMinigameComplete = (success: boolean) => {
@@ -691,6 +726,20 @@ const PlayerView = () => {
       );
     }
 
+    if (warningState === 'deflect') {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-blue-950/90 border-8 border-blue-600 animate-pulse duration-75">
+          <h2 className="text-5xl font-black text-blue-500 mb-6 text-center drop-shadow-[0_0_20px_rgba(59,130,246,0.9)]">⚠️ INCOMING ⚠️</h2>
+          <div className="text-3xl font-bold text-white text-center tracking-widest mt-8">
+            KINETIC STRIKE<br/>DETECTED
+          </div>
+          <div className="mt-12 text-xl text-blue-300 tracking-[0.2em] animate-bounce">
+            PREPARE TO DEFLECT
+          </div>
+        </div>
+      );
+    }
+
     if (activeMinigame === 'overload') {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-red-950">
@@ -705,6 +754,37 @@ const PlayerView = () => {
           </button>
           
           <p className="mt-12 text-slate-400 text-lg">MASH TO CRASH ASSET!</p>
+        </div>
+      );
+    }
+
+    if (activeMinigame === 'deflect') {
+      const currentScale = (timeLeft / minigameDuration) * 100;
+      return (
+        <div 
+          className="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-950 cursor-pointer"
+          onPointerDown={handleDeflectTap}
+        >
+          <h2 className="text-4xl font-black text-blue-500 mb-2 animate-pulse">DEFLECT</h2>
+          <div className="text-xl font-bold text-white mb-8">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          
+          <div className="relative w-80 h-80 flex items-center justify-center">
+             {/* The Target Zone (30% to 50% scale, but effectively we said 20 to 40 above) */}
+             <div className="absolute w-32 h-32 rounded-full border-8 border-green-500/50 shadow-[0_0_20px_rgba(34,197,94,0.5)] pointer-events-none"></div>
+             
+             {/* The Shrinking Arc */}
+             <div 
+               className="absolute rounded-full border-[12px] border-blue-400 shadow-[0_0_30px_rgba(96,165,250,0.8)] pointer-events-none transition-all duration-100 ease-linear"
+               style={{
+                 width: `${Math.max(0, currentScale)}%`,
+                 height: `${Math.max(0, currentScale)}%`,
+               }}
+             ></div>
+             
+             <div className="w-4 h-4 bg-white rounded-full pointer-events-none"></div>
+          </div>
+          
+          <p className="mt-12 text-slate-400 text-lg">TAP WHEN RINGS ALIGN!</p>
         </div>
       );
     }
@@ -1066,7 +1146,7 @@ const GMView = () => {
                 <div className="font-bold text-lg">{c.moxie}</div>
               </div>
             </div>
-            <div className="mt-4 pt-4 border-t border-slate-700 flex justify-center">
+            <div className="mt-4 pt-4 border-t border-slate-700 flex flex-col gap-2">
               <button 
                 onClick={() => {
                   socket.emit('gm:start_minigame', {
@@ -1084,7 +1164,27 @@ const GMView = () => {
                 className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded text-sm transition-colors"
                 disabled={c.is_online === 0}
               >
-                TRIGGER OVERLOAD
+                TRIGGER OVERLOAD (MIND)
+              </button>
+              
+              <button 
+                onClick={() => {
+                  socket.emit('gm:start_minigame', {
+                    roomCode,
+                    targetDeviceToken: c.device_token,
+                    minigameType: 'deflect'
+                  }, (res: any) => {
+                    if (!res || !res.success) {
+                      const msg = (res && res.message) || 'Failed to start minigame';
+                      setGmMessage({ text: msg, type: 'error' });
+                      setTimeout(() => setGmMessage(null), 4000);
+                    }
+                  });
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded text-sm transition-colors"
+                disabled={c.is_online === 0}
+              >
+                TRIGGER DEFLECT (MEAT)
               </button>
             </div>
             <div className="mt-2 flex gap-2 items-center">
