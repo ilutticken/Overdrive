@@ -81,6 +81,7 @@ const getCharacterStmt = db.prepare('SELECT * FROM characters WHERE room_code = 
 const activeMinigames = new Set();
 const activeFlashDraws = new Map();
 const activeCombatQueues = new Map();
+const activeDossiers = new Map();
 const updatePlayerHealthStmt = db.prepare('UPDATE players SET health = ? WHERE device_token = ?');
 const updateCharacterHealthStmt = db.prepare('UPDATE characters SET health = ? WHERE room_code = ? AND device_token = ?');
 const setPlayerAutoLoseStmt = db.prepare('UPDATE players SET auto_lose_on_fail = ? WHERE device_token = ?');
@@ -602,6 +603,127 @@ io.on('connection', (socket) => {
 
     // Clear active minigame state for this room
     try { activeMinigames.delete(uppercaseRoomCode); } catch (e) {}
+  });
+
+  // Dossier Minigame Flow
+  socket.on('gm:start_dossier', (data, callback) => {
+    const { roomCode, targetDeviceToken, disposition, motivation, fear } = data || {};
+    if (!roomCode || !targetDeviceToken || disposition === undefined || !motivation || !fear) {
+      if (callback) callback({ success: false, message: 'Missing parameters' });
+      return;
+    }
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    
+    if (activeMinigames.has(uppercaseRoomCode) || activeDossiers.has(uppercaseRoomCode)) {
+      if (callback) callback({ success: false, message: 'A minigame is already active in this room' });
+      return;
+    }
+
+    try {
+      const targetChar = getCharacterStmt.get(uppercaseRoomCode, targetDeviceToken);
+      if (!targetChar || targetChar.is_online === 0) {
+        if (callback) callback({ success: false, message: 'Target player is not online or not in room' });
+        return;
+      }
+    } catch (e) {
+      if (callback) callback({ success: false, message: 'DB error' });
+      return;
+    }
+
+    const motivationClues = {
+      'money': 'Target has massive off-the-books gambling debts.',
+      'fame': 'Target pays an agency to boost their social rating.',
+      'altruism': 'Target secretly funds an undercity clinic.',
+      'obedience': 'Target never takes vacation days and praises management.'
+    };
+    const fearClues = {
+      'violence': 'Target recently hired private security escorts.',
+      'ostracism': 'Target is desperate to stay in the elite corporate club.',
+      'exposure': 'Target has hidden files of illegal cyber-mods.',
+      'poverty': 'Target is terrified of losing their corporate housing.'
+    };
+
+    const clues = [motivationClues[motivation], fearClues[fear]].filter(Boolean);
+    // Shuffle clues
+    clues.sort(() => Math.random() - 0.5);
+
+    activeDossiers.set(uppercaseRoomCode, {
+      targetDeviceToken,
+      disposition: Number(disposition), // 0=Unreasonable to 4=Obedient
+      motivation,
+      fear,
+      guessedMotivation: false,
+      guessedFear: false
+    });
+
+    activeMinigames.add(uppercaseRoomCode);
+
+    io.to(uppercaseRoomCode).emit('room:dossier_started', {
+      targetDeviceToken,
+      disposition: Number(disposition),
+      clues
+    });
+
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('player:dossier_action', (data) => {
+    const { roomCode, deviceToken, actionType, actionValue } = data || {};
+    if (!roomCode || !deviceToken || !actionType || !actionValue) return;
+
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    const dossier = activeDossiers.get(uppercaseRoomCode);
+    if (!dossier || dossier.targetDeviceToken !== deviceToken) return;
+
+    let timePenalty = 0;
+
+    if (actionType === 'motivation') {
+      if (actionValue === dossier.motivation) {
+        dossier.guessedMotivation = true;
+        dossier.disposition = Math.min(4, dossier.disposition + 1);
+      } else {
+        timePenalty = 3000; // Penalty of 3 seconds for wrong motivation
+      }
+    } else if (actionType === 'fear') {
+      if (actionValue === dossier.fear) {
+        dossier.guessedFear = true;
+        dossier.disposition = Math.min(4, dossier.disposition + 1);
+      } else {
+        dossier.disposition -= 1; // Disposition drop for wrong fear
+      }
+    }
+
+    if (dossier.disposition < 0) {
+      // Failed: Dropped below Unreasonable
+      io.to(uppercaseRoomCode).emit('room:minigame_result', { success: false, deviceToken, degreeOfSuccess: 'failure', finalDisposition: 0 });
+      activeDossiers.delete(uppercaseRoomCode);
+      activeMinigames.delete(uppercaseRoomCode);
+    } else if (dossier.guessedMotivation && dossier.guessedFear) {
+      // Success: Guessed both
+      io.to(uppercaseRoomCode).emit('room:minigame_result', { success: true, deviceToken, degreeOfSuccess: 'success', finalDisposition: dossier.disposition });
+      activeDossiers.delete(uppercaseRoomCode);
+      activeMinigames.delete(uppercaseRoomCode);
+    } else {
+      // Continue update
+      io.to(uppercaseRoomCode).emit('room:dossier_update', {
+        disposition: dossier.disposition,
+        guessedMotivation: dossier.guessedMotivation,
+        guessedFear: dossier.guessedFear,
+        timePenalty
+      });
+    }
+  });
+
+  socket.on('player:dossier_timeout', (data) => {
+    const { roomCode, deviceToken } = data || {};
+    if (!roomCode || !deviceToken) return;
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    const dossier = activeDossiers.get(uppercaseRoomCode);
+    if (dossier && dossier.targetDeviceToken === deviceToken) {
+      io.to(uppercaseRoomCode).emit('room:minigame_result', { success: false, deviceToken, degreeOfSuccess: 'failure', finalDisposition: dossier.disposition });
+      activeDossiers.delete(uppercaseRoomCode);
+      activeMinigames.delete(uppercaseRoomCode);
+    }
   });
 
   // Flash Draw Flow

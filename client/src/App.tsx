@@ -116,9 +116,11 @@ const HostView = () => {
   // Minigame Display State
   const [warningTarget, setWarningTarget] = useState<string | null>(null);
   const [activeMinigameTarget, setActiveMinigameTarget] = useState<string | null>(null);
+  const [activeDossierTarget, setActiveDossierTarget] = useState<string | null>(null);
+  const [dossierDisposition, setDossierDisposition] = useState(2);
   const [activeMinigameType, setActiveMinigameType] = useState<string | null>(null);
   const [minigameProgress, setMinigameProgress] = useState(0);
-  const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean, degreeOfSuccess?: string}>({ success: false, show: false });
+  const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean, degreeOfSuccess?: string, finalDisposition?: number}>({ success: false, show: false });
 
   // Flash Draw State
   const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
@@ -205,9 +207,21 @@ const HostView = () => {
       }
     });
 
+    socket.on('room:dossier_started', (data) => {
+      setWarningTarget(null);
+      setActiveDossierTarget(data.targetDeviceToken);
+      setDossierDisposition(data.disposition);
+      setMinigameResult({ success: false, show: false });
+    });
+
+    socket.on('room:dossier_update', (data) => {
+      setDossierDisposition(data.disposition);
+    });
+
     socket.on('room:minigame_result', (data) => {
       setActiveMinigameTarget(null);
-      setMinigameResult({ success: data.success, show: true, degreeOfSuccess: data.degreeOfSuccess });
+      setActiveDossierTarget(null);
+      setMinigameResult({ success: data.success, show: true, degreeOfSuccess: data.degreeOfSuccess, finalDisposition: data.finalDisposition });
       
       // Hide splash after 4 seconds
       setTimeout(() => {
@@ -245,6 +259,8 @@ const HostView = () => {
       socket.off('room:minigame_warning');
       socket.off('room:minigame_started');
       socket.off('room:minigame_progress');
+      socket.off('room:dossier_started');
+      socket.off('room:dossier_update');
       socket.off('room:minigame_result');
       socket.off('room:flash_draw_prepare');
       socket.off('room:flash_draw_go');
@@ -254,7 +270,7 @@ const HostView = () => {
     };
   }, []);
 
-  const activeCharacter = characters.find(c => c.device_token === activeMinigameTarget);
+  const activeCharacter = characters.find(c => c.device_token === (activeMinigameTarget || activeDossierTarget));
   const warningCharacter = characters.find(c => c.device_token === warningTarget);
 
   return (
@@ -279,9 +295,24 @@ const HostView = () => {
              minigameResult.degreeOfSuccess === 'critical_failure' ? 'CRITICAL FAILURE' : 
              'FAILURE'}
              <div className="text-2xl mt-4 opacity-80 uppercase tracking-[0.5em] font-normal">{minigameResult.degreeOfSuccess?.replace('_', ' ')}</div>
-          </div>
-        </div>
-      )}
+             {minigameResult.finalDisposition !== undefined && (
+                <div className={`text-4xl mt-8 font-bold animate-pulse ${
+                    minigameResult.finalDisposition === 4 ? 'text-emerald-400' : 
+                    minigameResult.finalDisposition === 3 ? 'text-emerald-500' : 
+                    minigameResult.finalDisposition === 2 ? 'text-yellow-400' : 
+                    minigameResult.finalDisposition === 1 ? 'text-orange-500' : 'text-red-500'
+                }`}>
+                   FINAL DISPOSITION: {
+                    minigameResult.finalDisposition === 4 ? 'OBEDIENT' : 
+                    minigameResult.finalDisposition === 3 ? 'COMPLIANT' : 
+                    minigameResult.finalDisposition === 2 ? 'NEUTRAL' : 
+                    minigameResult.finalDisposition === 1 ? 'HOSTILE' : 'UNREASONABLE'
+                   }
+                </div>
+             )}
+             </div>
+             </div>
+             )}
 
       {/* Pre-game Warning UI */}
       {warningTarget && warningCharacter && (
@@ -335,6 +366,42 @@ const HostView = () => {
         </div>
       )}
 
+      {/* Active Dossier UI (Host) */}
+      {activeDossierTarget && activeCharacter && (
+        <div className="w-full max-w-6xl flex flex-col items-center animate-in fade-in zoom-in duration-300">
+           <h2 className="text-6xl font-black mb-8 animate-pulse text-emerald-500 drop-shadow-[0_0_20px_rgba(16,185,129,0.8)]">
+             BIOMETRIC MONITORING
+           </h2>
+           <h3 className="text-4xl text-white mb-12">TARGET: <span className="text-emerald-400">{activeCharacter.name}</span></h3>
+           
+           <div className="w-full max-w-4xl bg-slate-900 border-4 border-emerald-900 h-48 rounded-lg relative shadow-[0_0_30px_rgba(16,185,129,0.5)] overflow-hidden flex flex-col items-center justify-center">
+             <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'linear-gradient(0deg, transparent 24%, rgba(16, 185, 129, 0.3) 25%, rgba(16, 185, 129, 0.3) 26%, transparent 27%, transparent 74%, rgba(16, 185, 129, 0.3) 75%, rgba(16, 185, 129, 0.3) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(16, 185, 129, 0.3) 25%, rgba(16, 185, 129, 0.3) 26%, transparent 27%, transparent 74%, rgba(16, 185, 129, 0.3) 75%, rgba(16, 185, 129, 0.3) 76%, transparent 77%, transparent)', backgroundSize: '50px 50px' }}></div>
+             
+             <div className="text-6xl font-mono text-emerald-400 z-10 flex flex-col items-center">
+               <span className="text-xl text-emerald-600 mb-2">HEART RATE // STRESS LEVEL</span>
+               {dossierDisposition === 4 ? '60 BPM [OBEDIENT]' :
+                dossierDisposition === 3 ? '85 BPM [COMPLIANT]' :
+                dossierDisposition === 2 ? '110 BPM [NEUTRAL]' :
+                dossierDisposition === 1 ? '145 BPM [HOSTILE]' :
+                '180+ BPM [UNREASONABLE]'}
+             </div>
+             
+             {/* Visual heartbeat line */}
+             <div className="absolute bottom-0 w-full h-2 bg-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,1)] transition-all ease-linear" style={{
+                transformOrigin: 'left',
+                animation: `pulse ${dossierDisposition === 4 ? 2 : dossierDisposition === 3 ? 1.5 : dossierDisposition === 2 ? 1 : dossierDisposition === 1 ? 0.5 : 0.2}s infinite`
+             }}></div>
+             <style>{`
+               @keyframes pulse {
+                 0% { transform: scaleX(0); opacity: 1; }
+                 50% { transform: scaleX(1); opacity: 1; }
+                 100% { transform: scaleX(1); opacity: 0; }
+               }
+             `}</style>
+           </div>
+        </div>
+      )}
+
       {/* Flash Draw UI */}
       {flashDrawState === 'prepare' && (
         <div className="fixed inset-0 z-40 bg-black/90 flex flex-col items-center justify-center animate-pulse">
@@ -369,7 +436,7 @@ const HostView = () => {
       )}
 
       {/* Standard Host UI (Hidden during minigame or flash draw) */}
-      {!activeMinigameTarget && !warningTarget && flashDrawState === 'idle' && (
+      {!activeMinigameTarget && !activeDossierTarget && !warningTarget && flashDrawState === 'idle' && (
         <>
           {activeCombatState && activeCombatState.queue.length > 0 && (
             <div className="absolute top-8 left-8 z-10 w-64 bg-slate-900/80 border border-slate-700 rounded-lg p-4 shadow-2xl backdrop-blur-sm">
@@ -444,6 +511,13 @@ const PlayerView = () => {
 
   // Flash Draw State
   const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
+
+  // Dossier State
+  const [activeDossier, setActiveDossier] = useState(false);
+  const [dossierDisposition, setDossierDisposition] = useState(2);
+  const [dossierClues, setDossierClues] = useState<string[]>([]);
+  const [dossierGuessedMotivation, setDossierGuessedMotivation] = useState(false);
+  const [dossierGuessedFear, setDossierGuessedFear] = useState(false);
 
   const handleFlashDrawTap = () => {
     if (flashDrawState !== 'go') return;
@@ -617,6 +691,34 @@ const PlayerView = () => {
         setFlashDrawState('idle');
       });
 
+      socket.on('room:dossier_started', (data) => {
+        if (data.targetDeviceToken === getDeviceToken()) {
+          setActiveDossier(true);
+          setDossierDisposition(data.disposition);
+          setMinigameDuration(15000);
+          setTimeLeft(15000);
+          setDossierGuessedMotivation(false);
+          setDossierGuessedFear(false);
+        } else {
+          setDossierClues(data.clues || []);
+        }
+      });
+
+      socket.on('room:dossier_update', (data) => {
+        setDossierDisposition(data.disposition);
+        setDossierGuessedMotivation(data.guessedMotivation);
+        setDossierGuessedFear(data.guessedFear);
+        if (data.timePenalty) {
+           setTimeLeft(prev => Math.max(100, prev - data.timePenalty));
+        }
+      });
+
+      socket.on('room:minigame_result', () => {
+         setActiveMinigame(null);
+         setActiveDossier(false);
+         setDossierClues([]);
+      });
+
       return () => {
         socket.off('room:state_update');
         socket.off('room:minigame_warning');
@@ -625,6 +727,9 @@ const PlayerView = () => {
         socket.off('room:flash_draw_go');
         socket.off('room:flash_draw_results');
         socket.off('room:flash_draw_complete');
+        socket.off('room:dossier_started');
+        socket.off('room:dossier_update');
+        socket.off('room:minigame_result');
       };
     }
   }, [joined]);
@@ -632,7 +737,7 @@ const PlayerView = () => {
   // Minigame Timer Logic
   useEffect(() => {
     let timer: number;
-    if (activeMinigame && timeLeft > 0) {
+    if ((activeMinigame || activeDossier) && timeLeft > 0) {
       timer = window.setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 100) {
@@ -640,7 +745,10 @@ const PlayerView = () => {
             // Time up logic handled here to ensure it fires once
             if (!minigameReportedRef.current) {
               minigameReportedRef.current = true;
-              if (activeMinigame === 'overload') {
+              if (activeDossier && character) {
+                 socket.emit('player:dossier_timeout', { roomCode: character.room_code, deviceToken: getDeviceToken() });
+                 setTimeout(() => { minigameReportedRef.current = false; }, 1000);
+              } else if (activeMinigame === 'overload') {
                 const finalTaps = tapCountRef.current;
                 let degreeOfSuccess = 'failure';
                 if (finalTaps < 14) degreeOfSuccess = 'critical_failure';
@@ -888,6 +996,43 @@ const PlayerView = () => {
       );
     }
 
+    if (activeDossier && character) {
+      return (
+        <div className="flex flex-col items-center min-h-screen p-6 bg-slate-950 w-full overflow-y-auto">
+          <h2 className="text-4xl font-black text-emerald-500 mb-2 animate-pulse">SOCIAL ENGINEERING</h2>
+          <div className="text-xl font-bold text-white mb-4">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          
+          <div className="text-emerald-400 font-bold mb-6 border border-emerald-900 bg-emerald-950/30 p-2 rounded w-full max-w-md text-center shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+             DISPOSITION: {dossierDisposition === 4 ? 'OBEDIENT' : dossierDisposition === 3 ? 'COMPLIANT' : dossierDisposition === 2 ? 'NEUTRAL' : dossierDisposition === 1 ? 'HOSTILE' : 'UNREASONABLE'}
+          </div>
+
+          <div className="w-full max-w-md space-y-4 pb-8">
+             {!dossierGuessedMotivation && (
+               <div className="space-y-2">
+                 <h3 className="text-emerald-300 font-bold border-b border-emerald-900 pb-1">MOTIVATION ACTIONS</h3>
+                 <button onClick={() => socket.emit('player:dossier_action', { roomCode: character.room_code, deviceToken: getDeviceToken(), actionType: 'motivation', actionValue: 'money' })} className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded text-left border border-slate-700 transition-colors">Offer a Bribe</button>
+                 <button onClick={() => socket.emit('player:dossier_action', { roomCode: character.room_code, deviceToken: getDeviceToken(), actionType: 'motivation', actionValue: 'fame' })} className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded text-left border border-slate-700 transition-colors">Promise Exposure & Glory</button>
+                 <button onClick={() => socket.emit('player:dossier_action', { roomCode: character.room_code, deviceToken: getDeviceToken(), actionType: 'motivation', actionValue: 'altruism' })} className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded text-left border border-slate-700 transition-colors">Appeal to the Greater Good</button>
+                 <button onClick={() => socket.emit('player:dossier_action', { roomCode: character.room_code, deviceToken: getDeviceToken(), actionType: 'motivation', actionValue: 'obedience' })} className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded text-left border border-slate-700 transition-colors">Invoke Corporate Authority</button>
+               </div>
+             )}
+             {dossierGuessedMotivation && <div className="text-emerald-500 font-bold p-4 bg-emerald-950/50 rounded border border-emerald-900 text-center animate-pulse">MOTIVATION LEVERAGED</div>}
+             
+             {!dossierGuessedFear && (
+               <div className="space-y-2 mt-4">
+                 <h3 className="text-emerald-300 font-bold border-b border-emerald-900 pb-1">FEAR ACTIONS</h3>
+                 <button onClick={() => socket.emit('player:dossier_action', { roomCode: character.room_code, deviceToken: getDeviceToken(), actionType: 'fear', actionValue: 'violence' })} className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded text-left border border-slate-700 transition-colors">Threaten Physical Harm</button>
+                 <button onClick={() => socket.emit('player:dossier_action', { roomCode: character.room_code, deviceToken: getDeviceToken(), actionType: 'fear', actionValue: 'ostracism' })} className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded text-left border border-slate-700 transition-colors">Threaten Social Exile</button>
+                 <button onClick={() => socket.emit('player:dossier_action', { roomCode: character.room_code, deviceToken: getDeviceToken(), actionType: 'fear', actionValue: 'exposure' })} className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded text-left border border-slate-700 transition-colors">Blackmail with Secrets</button>
+                 <button onClick={() => socket.emit('player:dossier_action', { roomCode: character.room_code, deviceToken: getDeviceToken(), actionType: 'fear', actionValue: 'poverty' })} className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded text-left border border-slate-700 transition-colors">Threaten Financial Ruin</button>
+               </div>
+             )}
+             {dossierGuessedFear && <div className="text-emerald-500 font-bold p-4 bg-emerald-950/50 rounded border border-emerald-900 text-center animate-pulse">FEAR LEVERAGED</div>}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center p-6 min-h-screen">
         <div className="w-full max-w-md border-b-2 border-fuchsia-500 pb-4 mb-6">
@@ -925,6 +1070,14 @@ const PlayerView = () => {
           {roomState === 'overdrive' && (
              <div className="animate-bounce text-fuchsia-500 font-bold text-2xl border-2 border-fuchsia-500 p-8 rounded text-center w-full bg-fuchsia-500/10">
                SYSTEM OVERDRIVE<br/>PREPARE FOR INJECTION
+             </div>
+          )}
+          {dossierClues.length > 0 && flashDrawState === 'idle' && !activeDossier && !activeMinigame && (
+             <div className="animate-pulse text-emerald-400 font-bold border-2 border-emerald-500 p-6 rounded text-left w-full bg-emerald-950/30 mt-4 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+               <h3 className="text-emerald-500 border-b border-emerald-900 pb-2 mb-4 tracking-widest">INTERCEPTED INTEL<br/><span className="text-xs text-white">SHOUT THIS TO YOUR CREW!</span></h3>
+               <ul className="list-disc pl-4 space-y-3 text-sm text-emerald-200 font-mono">
+                 {dossierClues.map((c, i) => <li key={i}>{c}</li>)}
+               </ul>
              </div>
           )}
         </div>
@@ -1060,6 +1213,7 @@ const GMView = () => {
 
   const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
   const [activeCombatState, setActiveCombatState] = useState<{queue: any[], activeIndex: number} | null>(null);
+  const [dossierSetup, setDossierSetup] = useState<{ [key: string]: { disposition: string, motivation: string, fear: string } }>({});
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1306,7 +1460,67 @@ const GMView = () => {
                 TRIGGER BLUFF (MOXIE)
               </button>
             </div>
-            <div className="mt-2 flex gap-2 items-center">
+
+            <div className="mt-4 pt-4 border-t border-slate-700">
+               <h4 className="text-emerald-500 font-bold mb-2">TRIGGER DOSSIER (MOXIE)</h4>
+               <div className="space-y-2">
+                 <select 
+                   value={dossierSetup[c.device_token]?.disposition || '2'} 
+                   onChange={e => setDossierSetup(s => ({...s, [c.device_token]: {...(s[c.device_token] || { motivation: 'money', fear: 'violence' }), disposition: e.target.value}}))} 
+                   className="w-full bg-slate-900 border border-slate-600 text-white p-2 rounded text-sm"
+                 >
+                   <option value="4">Obedient</option>
+                   <option value="3">Compliant</option>
+                   <option value="2">Neutral</option>
+                   <option value="1">Hostile</option>
+                   <option value="0">Unreasonable</option>
+                 </select>
+                 <select 
+                   value={dossierSetup[c.device_token]?.motivation || 'money'} 
+                   onChange={e => setDossierSetup(s => ({...s, [c.device_token]: {...(s[c.device_token] || { disposition: '2', fear: 'violence' }), motivation: e.target.value}}))} 
+                   className="w-full bg-slate-900 border border-slate-600 text-white p-2 rounded text-sm"
+                 >
+                   <option value="money">Money</option>
+                   <option value="fame">Fame</option>
+                   <option value="altruism">Altruism</option>
+                   <option value="obedience">Obedience</option>
+                 </select>
+                 <select 
+                   value={dossierSetup[c.device_token]?.fear || 'violence'} 
+                   onChange={e => setDossierSetup(s => ({...s, [c.device_token]: {...(s[c.device_token] || { disposition: '2', motivation: 'money' }), fear: e.target.value}}))} 
+                   className="w-full bg-slate-900 border border-slate-600 text-white p-2 rounded text-sm"
+                 >
+                   <option value="violence">Violence</option>
+                   <option value="ostracism">Ostracism</option>
+                   <option value="exposure">Exposure</option>
+                   <option value="poverty">Poverty</option>
+                 </select>
+                 <button 
+                   onClick={() => {
+                     const setup = dossierSetup[c.device_token] || { disposition: '2', motivation: 'money', fear: 'violence' };
+                     socket.emit('gm:start_dossier', {
+                       roomCode,
+                       targetDeviceToken: c.device_token,
+                       disposition: setup.disposition,
+                       motivation: setup.motivation,
+                       fear: setup.fear
+                     }, (res: any) => {
+                       if (!res || !res.success) {
+                         const msg = (res && res.message) || 'Failed to start minigame';
+                         setGmMessage({ text: msg, type: 'error' });
+                         setTimeout(() => setGmMessage(null), 4000);
+                       }
+                     });
+                   }}
+                   className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded text-sm transition-colors"
+                   disabled={c.is_online === 0}
+                 >
+                   START DOSSIER HACK
+                 </button>
+               </div>
+            </div>
+
+            <div className="mt-4 flex gap-2 items-center border-t border-slate-700 pt-4">
               <button className="w-12 h-10 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded text-sm" onClick={() => {
                 const cur = Number(c.health || 0);
                 const num = Math.max(0, cur - 1);
