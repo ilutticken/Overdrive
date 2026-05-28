@@ -77,8 +77,28 @@ const updateProfileLastUsedStmt = db.prepare('UPDATE character_profiles SET last
 const deleteProfileStmt = db.prepare('DELETE FROM character_profiles WHERE id = ? AND device_token = ?');
 const getCharacterStmt = db.prepare('SELECT * FROM characters WHERE room_code = ? AND device_token = ?');
 
+const MINIGAME_DIFFICULTY_MODIFIERS = {
+  easy: [
+    { type: 'time', label: 'SLOW BURN', description: 'The timer lasts longer.', durationMultiplier: 1.25 },
+    { type: 'consequence', label: 'LESSER CONSEQUENCE', description: 'The GM may apply a lesser consequence.', failurePenalty: 0 },
+    { type: 'target', label: 'STEADY HAND', description: 'The target stays steadier under pressure.' }
+  ],
+  hard: [
+    { type: 'time', label: 'DEADLINE', description: 'The timer cuts down sharply.', durationMultiplier: 0.6 },
+    { type: 'consequence', label: 'GREATER CONSEQUENCE', description: 'The GM may apply a greater consequence.', failurePenalty: 0 },
+    { type: 'target', label: 'LOCKED ON', description: 'The target is pinned under severe pressure.' }
+  ]
+};
+
+const rollMinigameModifier = (difficultyTier = 'medium') => {
+  if (difficultyTier === 'medium') return null;
+  const pool = MINIGAME_DIFFICULTY_MODIFIERS[difficultyTier] || [];
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+};
+
 // Track active minigames per room to prevent overlapping minigames
-const activeMinigames = new Set();
+const activeMinigames = new Map();
 const activeFlashDraws = new Map();
 const activeCombatQueues = new Map();
 const activeDossiers = new Map();
@@ -497,7 +517,7 @@ io.on('connection', (socket) => {
 
   // 5. Minigame Flow
   socket.on('gm:start_minigame', (data, callback) => {
-    const { roomCode, targetDeviceToken, minigameType } = data || {};
+    const { roomCode, targetDeviceToken, minigameType, difficultyTier } = data || {};
     if (!roomCode || !targetDeviceToken) {
       if (callback) callback({ success: false, message: 'Missing parameters' });
       return;
@@ -524,22 +544,32 @@ io.on('connection', (socket) => {
       return;
     }
 
-    console.log(`Minigame ${minigameType} warning triggered for ${targetDeviceToken} in room ${uppercaseRoomCode}`);
+    const modifier = rollMinigameModifier(difficultyTier);
+    console.log(`Minigame ${minigameType} (${difficultyTier || 'medium'}) warning triggered for ${targetDeviceToken} in room ${uppercaseRoomCode}. Modifier: ${modifier?.label || 'None'}`);
 
     // Mark minigame active for this room
-    activeMinigames.add(uppercaseRoomCode);
+    activeMinigames.set(uppercaseRoomCode, {
+      targetDeviceToken,
+      minigameType,
+      difficultyTier: difficultyTier || 'medium',
+      modifier
+    });
 
     // 1. Emit warning immediately
     io.to(uppercaseRoomCode).emit('room:minigame_warning', {
       targetDeviceToken,
-      minigameType
+      minigameType,
+      difficultyTier: difficultyTier || 'medium',
+      modifier
     });
 
     // 2. Wait 2.5 seconds, then emit actual start
     setTimeout(() => {
       io.to(uppercaseRoomCode).emit('room:minigame_started', {
         targetDeviceToken,
-        minigameType
+        minigameType,
+        difficultyTier: difficultyTier || 'medium',
+        modifier
       });
     }, 2500);
 
@@ -565,7 +595,8 @@ io.on('connection', (socket) => {
     console.log(`Minigame completed for ${deviceToken} in room ${uppercaseRoomCode}. Success: ${success}, Degree: ${degreeOfSuccess}`);
 
     // Only process completion if a minigame was active for this room
-    if (!activeMinigames.has(uppercaseRoomCode)) {
+    const activeMinigame = activeMinigames.get(uppercaseRoomCode);
+    if (!activeMinigame) {
       console.log('Ignoring minigame completion: no active minigame for room', uppercaseRoomCode);
       return;
     }
@@ -573,33 +604,10 @@ io.on('connection', (socket) => {
     io.to(uppercaseRoomCode).emit('room:minigame_result', {
       deviceToken,
       success,
-      degreeOfSuccess
+      degreeOfSuccess,
+      modifier: activeMinigame.modifier,
+      difficultyTier: activeMinigame.difficultyTier
     });
-    // If player failed and has auto_lose enabled, decrement health
-    try {
-      const persistent = getPlayerStmt.get(deviceToken);
-      if (!success && persistent && persistent.auto_lose_on_fail === 1) {        const newHealth = Math.max(0, (persistent.health || 0) - 1);
-        updatePlayerHealthStmt.run(newHealth, deviceToken);
-        updateCharacterHealthStmt.run(newHealth, uppercaseRoomCode, deviceToken);
-        const characters = getCharactersStmt.all(uppercaseRoomCode);
-        const merged = characters.map(c => {
-          const p = getPlayerStmt.get(c.device_token) || {};
-          return {
-            ...c,
-            health: (p.health !== undefined && p.health !== null) ? p.health : c.health,
-            max_health: (p.max_health !== undefined && p.max_health !== null) ? p.max_health : c.max_health,
-            credits: (p.credits !== undefined && p.credits !== null) ? p.credits : c.credits,
-            gear: p.gear ?? c.gear,
-            status_effects: p.status_effects ?? c.status_effects,
-            notes: p.notes ?? c.notes,
-            auto_lose_on_fail: p.auto_lose_on_fail ?? 0
-          };
-        });
-        io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: getRoomStmt.get(uppercaseRoomCode).state });
-      }
-    } catch (e) {
-      console.error('Error applying auto-lose HP', e);
-    }
 
     // Clear active minigame state for this room
     try { activeMinigames.delete(uppercaseRoomCode); } catch (e) {}
@@ -656,7 +664,10 @@ io.on('connection', (socket) => {
       guessedFear: false
     });
 
-    activeMinigames.add(uppercaseRoomCode);
+    activeMinigames.set(uppercaseRoomCode, {
+      targetDeviceToken,
+      minigameType: 'dossier'
+    });
 
     io.to(uppercaseRoomCode).emit('room:dossier_started', {
       targetDeviceToken,

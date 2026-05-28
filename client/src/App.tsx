@@ -119,8 +119,10 @@ const HostView = () => {
   const [activeDossierTarget, setActiveDossierTarget] = useState<string | null>(null);
   const [dossierDisposition, setDossierDisposition] = useState(2);
   const [activeMinigameType, setActiveMinigameType] = useState<string | null>(null);
+  const [activeMinigameDifficulty, setActiveMinigameDifficulty] = useState<string | null>(null);
+  const [activeMinigameModifier, setActiveMinigameModifier] = useState<any>(null);
   const [minigameProgress, setMinigameProgress] = useState(0);
-  const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean, degreeOfSuccess?: string, finalDisposition?: number}>({ success: false, show: false });
+  const [minigameResult, setMinigameResult] = useState<{success: boolean, show: boolean, degreeOfSuccess?: string, finalDisposition?: number, modifier?: any, difficultyTier?: string}>({ success: false, show: false });
 
   // Flash Draw State
   const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
@@ -190,6 +192,8 @@ const HostView = () => {
     socket.on('room:minigame_warning', (data) => {
       setWarningTarget(data.targetDeviceToken);
       setActiveMinigameType(data.minigameType);
+      setActiveMinigameDifficulty(data.difficultyTier || null);
+      setActiveMinigameModifier(data.modifier || null);
       setMinigameResult({ success: false, show: false });
     });
 
@@ -197,6 +201,8 @@ const HostView = () => {
       setWarningTarget(null);
       setActiveMinigameTarget(data.targetDeviceToken);
       setActiveMinigameType(data.minigameType);
+      setActiveMinigameDifficulty(data.difficultyTier || null);
+      setActiveMinigameModifier(data.modifier || null);
       setMinigameProgress(0);
       setMinigameResult({ success: false, show: false });
     });
@@ -221,7 +227,16 @@ const HostView = () => {
     socket.on('room:minigame_result', (data) => {
       setActiveMinigameTarget(null);
       setActiveDossierTarget(null);
-      setMinigameResult({ success: data.success, show: true, degreeOfSuccess: data.degreeOfSuccess, finalDisposition: data.finalDisposition });
+      setActiveMinigameDifficulty(null);
+      setActiveMinigameModifier(null);
+      setMinigameResult({
+        success: data.success,
+        show: true,
+        degreeOfSuccess: data.degreeOfSuccess,
+        finalDisposition: data.finalDisposition,
+        modifier: data.modifier || null,
+        difficultyTier: data.difficultyTier || null
+      });
       
       // Hide splash after 4 seconds
       setTimeout(() => {
@@ -295,6 +310,13 @@ const HostView = () => {
              minigameResult.degreeOfSuccess === 'critical_failure' ? 'CRITICAL FAILURE' : 
              'FAILURE'}
              <div className="text-2xl mt-4 opacity-80 uppercase tracking-[0.5em] font-normal">{minigameResult.degreeOfSuccess?.replace('_', ' ')}</div>
+             {minigameResult.modifier && (
+               <div className={`mt-6 px-8 py-4 rounded-2xl border text-center max-w-3xl ${minigameResult.modifier.type === 'consequence' ? 'border-orange-400/60 bg-orange-950/70 text-orange-100' : minigameResult.modifier.type === 'time' ? 'border-cyan-400/60 bg-cyan-950/70 text-cyan-100' : 'border-emerald-400/60 bg-emerald-950/70 text-emerald-100'}`}>
+                 <div className="text-xs uppercase tracking-[0.35em] opacity-80">{(minigameResult.modifier.type || 'modifier').toUpperCase()} MODIFIED</div>
+                 <div className="mt-2 text-4xl font-black">{minigameResult.modifier.label}</div>
+                 <div className="mt-2 text-2xl font-medium">{minigameResult.modifier.description}</div>
+               </div>
+             )}
              {minigameResult.finalDisposition !== undefined && (
                 <div className={`text-4xl mt-8 font-bold animate-pulse ${
                     minigameResult.finalDisposition === 4 ? 'text-emerald-400' : 
@@ -326,6 +348,13 @@ const HostView = () => {
            <div className={`mt-12 text-3xl font-mono tracking-[0.3em] animate-bounce ${activeMinigameType === 'deflect' ? 'text-blue-300' : activeMinigameType === 'bluff' ? 'text-amber-300' : 'text-red-400'}`}>
              {activeMinigameType === 'deflect' ? 'PREPARE TO DEFLECT' : activeMinigameType === 'bluff' ? 'MAINTAIN RESOLVE' : 'BRACE FOR FEEDBACK'}
            </div>
+           {activeMinigameModifier && (
+             <div className={`mt-8 px-8 py-4 rounded-full border text-center backdrop-blur ${activeMinigameModifier.type === 'time' ? 'bg-rose-950/90 border-rose-700 text-rose-100' : activeMinigameModifier.type === 'consequence' ? 'bg-orange-950/90 border-orange-700 text-orange-100' : 'bg-cyan-950/90 border-cyan-700 text-cyan-100'}`}>
+               <div className="text-xs uppercase tracking-[0.35em] opacity-80">DIFFICULTY {activeMinigameDifficulty?.toUpperCase() || 'STANDARD'}</div>
+               <div className="mt-2 text-3xl font-black">{activeMinigameModifier.label}</div>
+               <div className="mt-1 text-lg font-medium">{activeMinigameModifier.description}</div>
+             </div>
+           )}
         </div>
       )}
 
@@ -336,6 +365,12 @@ const HostView = () => {
              {activeMinigameType === 'deflect' ? 'DEFLECTION PROTOCOL ACTIVE' : activeMinigameType === 'bluff' ? 'BLUFF PROTOCOL ACTIVE' : 'OVERLOAD PROTOCOL INITIATED'}
            </h2>
            <h3 className="text-4xl text-white mb-12">OPERATIVE: <span className="text-fuchsia-400">{activeCharacter.name}</span></h3>
+           {activeMinigameModifier && (
+             <div className={`mb-8 px-6 py-3 rounded-lg border text-lg font-bold ${activeMinigameModifier.type === 'time' ? 'bg-rose-950/80 border-rose-700 text-rose-100' : activeMinigameModifier.type === 'consequence' ? 'bg-orange-950/80 border-orange-700 text-orange-100' : 'bg-cyan-950/80 border-cyan-700 text-cyan-100'}`}>
+               <div className="text-xs uppercase tracking-[0.35em]">{activeMinigameDifficulty?.toUpperCase() || 'STANDARD'} MODIFIER</div>
+               <div className="mt-1">{activeMinigameModifier.label} — {activeMinigameModifier.description}</div>
+             </div>
+           )}
            
            {activeMinigameType === 'overload' && (
              <div className="w-full bg-slate-900 border-4 border-red-900 h-24 rounded-full overflow-hidden relative shadow-[0_0_30px_rgba(220,38,38,0.5)]">
@@ -502,6 +537,8 @@ const PlayerView = () => {
 
   // Minigame State
   const [warningState, setWarningState] = useState<string | null>(null);
+  const [currentMinigameModifier, setCurrentMinigameModifier] = useState<any>(null);
+  const [currentMinigameDifficulty, setCurrentMinigameDifficulty] = useState<string | null>(null);
   const [activeMinigame, setActiveMinigame] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(3000); // Dynamic based on stats
   const [minigameDuration, setMinigameDuration] = useState(3000);
@@ -646,6 +683,8 @@ const PlayerView = () => {
       socket.on('room:minigame_warning', (data) => {
         if (data.targetDeviceToken === getDeviceToken()) {
           setWarningState(data.minigameType);
+          setCurrentMinigameModifier(data.modifier || null);
+          setCurrentMinigameDifficulty(data.difficultyTier || null);
         }
       });
 
@@ -667,8 +706,14 @@ const PlayerView = () => {
                else startingTime = 2000;
             }
           }
+
+          if (data.modifier?.type === 'time' && typeof data.modifier.durationMultiplier === 'number') {
+            startingTime = Math.max(1000, Math.floor(startingTime * data.modifier.durationMultiplier));
+          }
           
           setWarningState(null);
+          setCurrentMinigameModifier(data.modifier || null);
+          setCurrentMinigameDifficulty(data.difficultyTier || null);
           setActiveMinigame(data.minigameType);
           setMinigameDuration(startingTime);
           setTimeLeft(startingTime);
@@ -710,6 +755,8 @@ const PlayerView = () => {
       });
 
       socket.on('room:minigame_result', () => {
+         setCurrentMinigameModifier(null);
+         setCurrentMinigameDifficulty(null);
          setActiveMinigame(null);
          setActiveDossier(false);
          setDossierClues([]);
@@ -880,6 +927,13 @@ const PlayerView = () => {
           <div className="mt-12 text-xl text-red-300 tracking-[0.2em] animate-bounce">
             PREPARE TO OVERLOAD
           </div>
+          {currentMinigameModifier && (
+            <div className="mt-10 max-w-2xl rounded border border-red-500/40 bg-black/50 px-6 py-4 text-center backdrop-blur">
+              <div className="text-xs uppercase tracking-[0.35em] text-cyan-300">DIFFICULTY · {currentMinigameDifficulty?.toUpperCase() || 'STANDARD'}</div>
+              <div className="mt-2 text-2xl font-bold text-white">{currentMinigameModifier.label}</div>
+              <div className="mt-1 text-sm text-slate-200">{currentMinigameModifier.description}</div>
+            </div>
+          )}
         </div>
       );
     }
@@ -894,6 +948,13 @@ const PlayerView = () => {
           <div className="mt-12 text-xl text-blue-300 tracking-[0.2em] animate-bounce">
             PREPARE TO DEFLECT
           </div>
+          {currentMinigameModifier && (
+            <div className="mt-10 max-w-2xl rounded border border-blue-500/40 bg-black/50 px-6 py-4 text-center backdrop-blur">
+              <div className="text-xs uppercase tracking-[0.35em] text-cyan-300">DIFFICULTY · {currentMinigameDifficulty?.toUpperCase() || 'STANDARD'}</div>
+              <div className="mt-2 text-2xl font-bold text-white">{currentMinigameModifier.label}</div>
+              <div className="mt-1 text-sm text-slate-200">{currentMinigameModifier.description}</div>
+            </div>
+          )}
         </div>
       );
     }
@@ -908,6 +969,13 @@ const PlayerView = () => {
           <div className="mt-12 text-xl text-amber-300 tracking-[0.2em] animate-bounce">
             MAINTAIN RESOLVE
           </div>
+          {currentMinigameModifier && (
+            <div className="mt-10 max-w-2xl rounded border border-amber-500/40 bg-black/50 px-6 py-4 text-center backdrop-blur">
+              <div className="text-xs uppercase tracking-[0.35em] text-cyan-300">DIFFICULTY · {currentMinigameDifficulty?.toUpperCase() || 'STANDARD'}</div>
+              <div className="mt-2 text-2xl font-bold text-white">{currentMinigameModifier.label}</div>
+              <div className="mt-1 text-sm text-slate-200">{currentMinigameModifier.description}</div>
+            </div>
+          )}
         </div>
       );
     }
@@ -916,7 +984,13 @@ const PlayerView = () => {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-red-950">
           <h2 className="text-4xl font-black text-red-500 mb-2 animate-pulse">OVERLOAD</h2>
-          <div className="text-xl font-bold text-white mb-8">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          <div className="text-xl font-bold text-white mb-2">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          {currentMinigameModifier && (
+            <div className="mb-6 rounded border border-red-500/30 bg-black/40 px-4 py-2 text-center backdrop-blur">
+              <div className="text-xs uppercase tracking-[0.35em] text-cyan-300">{currentMinigameDifficulty?.toUpperCase() || 'STANDARD'} MODIFIER</div>
+              <div className="mt-1 text-sm font-bold text-white">{currentMinigameModifier.label} — {currentMinigameModifier.description}</div>
+            </div>
+          )}
           
           <button 
             onPointerDown={handleTap} // Better than onClick for fast mobile taps
@@ -938,7 +1012,13 @@ const PlayerView = () => {
           onPointerDown={handleDeflectTap}
         >
           <h2 className="text-4xl font-black text-blue-500 mb-2 animate-pulse">DEFLECT</h2>
-          <div className="text-xl font-bold text-white mb-8">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          <div className="text-xl font-bold text-white mb-2">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          {currentMinigameModifier && (
+            <div className="mb-6 rounded border border-blue-500/30 bg-black/40 px-4 py-2 text-center backdrop-blur">
+              <div className="text-xs uppercase tracking-[0.35em] text-cyan-300">{currentMinigameDifficulty?.toUpperCase() || 'STANDARD'} MODIFIER</div>
+              <div className="mt-1 text-sm font-bold text-white">{currentMinigameModifier.label} — {currentMinigameModifier.description}</div>
+            </div>
+          )}
           
           <div className="relative w-80 h-80 flex items-center justify-center">
              {/* Mixed success bounds (30% to 50%) */}
@@ -971,7 +1051,13 @@ const PlayerView = () => {
           onPointerDown={handleBluffTap}
         >
           <h2 className="text-4xl font-black text-amber-500 mb-2 animate-pulse">RESOLVE</h2>
-          <div className="text-xl font-bold text-white mb-8">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          <div className="text-xl font-bold text-white mb-2">TIME: {(timeLeft / 1000).toFixed(1)}s</div>
+          {currentMinigameModifier && (
+            <div className="mb-6 rounded border border-amber-500/30 bg-black/40 px-4 py-2 text-center backdrop-blur">
+              <div className="text-xs uppercase tracking-[0.35em] text-cyan-300">{currentMinigameDifficulty?.toUpperCase() || 'STANDARD'} MODIFIER</div>
+              <div className="mt-1 text-sm font-bold text-white">{currentMinigameModifier.label} — {currentMinigameModifier.description}</div>
+            </div>
+          )}
           
           <div className="relative w-full max-w-sm h-16 bg-amber-950 rounded-full border-4 border-amber-900 overflow-hidden shadow-[0_0_20px_rgba(245,158,11,0.5)]">
              {/* Mixed Success Zone (65% to 90%) */}
@@ -1207,6 +1293,7 @@ const GMView = () => {
   const [gmMessage, setGmMessage] = useState<{text: string, type: 'error' | 'info'} | null>(null);
 
   const [flashDrawState, setFlashDrawState] = useState<'idle' | 'prepare' | 'go' | 'results'>('idle');
+  const [selectedDifficultyTier, setSelectedDifficultyTier] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [activeCombatState, setActiveCombatState] = useState<{queue: any[], activeIndex: number} | null>(null);
   const [dossierSetup, setDossierSetup] = useState<{ [key: string]: { disposition: string, motivation: string, fear: string } }>({});
 
@@ -1372,6 +1459,27 @@ const GMView = () => {
         </div>
       )}
 
+      <div className="mb-6 bg-slate-900 border border-cyan-900 rounded-lg p-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <div className="text-cyan-300 text-xs font-bold uppercase tracking-[0.3em]">MINIGAME DIFFICULTY</div>
+            <p className="text-sm text-slate-400 mt-1">Each trigger rolls a fresh modifier from the selected tier.</p>
+          </div>
+          <div className="inline-flex rounded-full bg-slate-800 p-1">
+            {(['easy', 'medium', 'hard'] as const).map((tier) => (
+              <button
+                key={tier}
+                type="button"
+                onClick={() => setSelectedDifficultyTier(tier)}
+                className={`px-3 py-1 rounded-full text-xs font-bold uppercase transition-colors ${selectedDifficultyTier === tier ? 'bg-cyan-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
+              >
+                {tier}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {characters.map((c, i) => (
           <div key={i} className={`bg-slate-800 p-4 rounded-lg border border-slate-700 ${c.is_online === 0 ? 'opacity-40 grayscale' : ''}`}>
@@ -1400,7 +1508,8 @@ const GMView = () => {
                   socket.emit('gm:start_minigame', {
                     roomCode,
                     targetDeviceToken: c.device_token,
-                    minigameType: 'overload'
+                    minigameType: 'overload',
+                    difficultyTier: selectedDifficultyTier
                   }, (res: any) => {
                     if (!res || !res.success) {
                       const msg = (res && res.message) || 'Failed to start minigame';
@@ -1420,7 +1529,8 @@ const GMView = () => {
                   socket.emit('gm:start_minigame', {
                     roomCode,
                     targetDeviceToken: c.device_token,
-                    minigameType: 'deflect'
+                    minigameType: 'deflect',
+                    difficultyTier: selectedDifficultyTier
                   }, (res: any) => {
                     if (!res || !res.success) {
                       const msg = (res && res.message) || 'Failed to start minigame';
@@ -1440,7 +1550,8 @@ const GMView = () => {
                   socket.emit('gm:start_minigame', {
                     roomCode,
                     targetDeviceToken: c.device_token,
-                    minigameType: 'bluff'
+                    minigameType: 'bluff',
+                    difficultyTier: selectedDifficultyTier
                   }, (res: any) => {
                     if (!res || !res.success) {
                       const msg = (res && res.message) || 'Failed to start minigame';
