@@ -774,6 +774,37 @@ const PlayerView = () => {
     alertToneRef.current.preload = 'auto';
   }, []);
 
+  useEffect(() => {
+    if (!character) {
+      previousHealthRef.current = null;
+      return;
+    }
+
+    const currentHealth = Number(character.health || 0);
+    const prevHealth = previousHealthRef.current;
+
+    if (typeof prevHealth === 'number' && prevHealth !== currentHealth) {
+      setHealthEffect({ kind: currentHealth < prevHealth ? 'wound' : 'heal' });
+      if (healthEffectTimerRef.current) {
+        window.clearTimeout(healthEffectTimerRef.current);
+      }
+      healthEffectTimerRef.current = window.setTimeout(() => {
+        setHealthEffect(null);
+        healthEffectTimerRef.current = null;
+      }, 500);
+    }
+
+    previousHealthRef.current = currentHealth;
+  }, [character?.health]);
+
+  useEffect(() => {
+    return () => {
+      if (healthEffectTimerRef.current) {
+        window.clearTimeout(healthEffectTimerRef.current);
+      }
+    };
+  }, []);
+
   const playAlertBeep = () => {
     const tone = alertToneRef.current;
     if (!tone) return;
@@ -1414,7 +1445,27 @@ const PlayerView = () => {
 
     return (
       <div className="flex flex-col items-center p-6 min-h-screen">
-        <div className="w-full max-w-md border-b-2 border-fuchsia-500 pb-4 mb-6">
+        <style>{`
+          @keyframes player-sheet-glitch {
+            0%, 100% { transform: translateX(0px) scale(1); filter: hue-rotate(0deg) brightness(1); }
+            20% { transform: translateX(-3px) scale(1.01) skewX(-1deg); filter: hue-rotate(20deg) brightness(1.05); }
+            40% { transform: translateX(3px) scale(0.99) skewX(1deg); filter: hue-rotate(-20deg) brightness(0.95); }
+            60% { transform: translateX(-2px) scale(1.005); filter: hue-rotate(15deg) brightness(1.02); }
+            80% { transform: translateX(2px) scale(0.995); filter: hue-rotate(-10deg) brightness(0.98); }
+          }
+
+          @keyframes player-sheet-heal {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(16, 185, 129, 0); }
+            35% { transform: scale(1.015); box-shadow: 0 0 20px rgba(74, 222, 128, 0.6); }
+            100% { transform: scale(1); box-shadow: 0 0 0 rgba(16, 185, 129, 0); }
+          }
+        `}</style>
+        <div
+          className={`w-full max-w-md border-b-2 pb-4 mb-6 transition-all ${healthEffect?.kind === 'wound' ? 'border-red-500/70 shadow-[0_0_20px_rgba(239,68,68,0.4)]' : healthEffect?.kind === 'heal' ? 'border-emerald-500/70 shadow-[0_0_20px_rgba(16,185,129,0.4)]' : 'border-fuchsia-500'}`}
+          style={{
+            animation: healthEffect?.kind === 'wound' ? 'player-sheet-glitch 0.35s ease-in-out' : healthEffect?.kind === 'heal' ? 'player-sheet-heal 0.45s ease-in-out' : undefined,
+          }}
+        >
           <h1 className="text-3xl font-bold">{character?.name}</h1>
           <div className="mt-2 text-sm text-amber-200">BACKGROUND: {character?.background || 'Unassigned'}</div>
           <div className="flex justify-between mt-2 text-sm text-fuchsia-300 mb-4">
