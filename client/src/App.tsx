@@ -669,6 +669,10 @@ const PlayerView = () => {
   const [timeLeft, setTimeLeft] = useState(3000); // Dynamic based on stats
   const [minigameDuration, setMinigameDuration] = useState(3000);
   const [tapCount, setTapCount] = useState(0);
+  const [mashOffset, setMashOffset] = useState({ x: 0, y: 0 });
+  const [bluffTargetCenter, setBluffTargetCenter] = useState(50);
+  const [bluffSuccessWindow, setBluffSuccessWindow] = useState(15);
+  const [bluffCriticalWindow, setBluffCriticalWindow] = useState(7);
   const tapCountRef = React.useRef(0);
   const minigameReportedRef = React.useRef(false);
 
@@ -829,6 +833,7 @@ const PlayerView = () => {
                else if (character.mind >= 2) startingTime = 4000;
             }
             setTapCount(0);
+            setMashOffset({ x: 0, y: 0 });
             tapCountRef.current = 0;
           } else if (data.minigameType === 'deflect') {
             if (character) {
@@ -836,6 +841,22 @@ const PlayerView = () => {
                else if (character.meat >= 2) startingTime = 3500;
                else startingTime = 2000;
             }
+          }
+
+          if (data.minigameType === 'bluff') {
+            const modifierLabel = data.modifier?.label;
+            const modifierMultiplier = modifierLabel === 'LOCKED ON' ? 0.55 : modifierLabel === 'STEADY HAND' ? 1.6 : 1;
+            const successWindow = Math.max(8, Math.min(28, 15 * modifierMultiplier));
+            const criticalWindow = Math.max(4, Math.min(16, 7 * modifierMultiplier));
+            const randomCenter = Math.max(successWindow / 2, Math.min(100 - successWindow / 2, (Math.random() * (100 - successWindow)) + successWindow / 2));
+
+            setBluffTargetCenter(randomCenter);
+            setBluffSuccessWindow(successWindow);
+            setBluffCriticalWindow(criticalWindow);
+          } else {
+            setBluffTargetCenter(50);
+            setBluffSuccessWindow(15);
+            setBluffCriticalWindow(7);
           }
 
           if (data.modifier?.type === 'time' && typeof data.modifier.durationMultiplier === 'number') {
@@ -947,7 +968,23 @@ const PlayerView = () => {
     if (activeMinigame !== 'overload' || timeLeft <= 0) return;
 
     const newCount = tapCount + 1;
+    const modifier = currentMinigameModifier;
+    const targetModifier = modifier?.type === 'target';
+    const movementScale = targetModifier
+      ? (modifier?.label === 'LOCKED ON' ? 34 : 10)
+      : currentMinigameDifficulty === 'hard' ? 18 : currentMinigameDifficulty === 'easy' ? 8 : 12;
+    const turbulence = targetModifier
+      ? (modifier?.label === 'LOCKED ON' ? 20 : 5)
+      : currentMinigameDifficulty === 'hard' ? 12 : currentMinigameDifficulty === 'easy' ? 4 : 8;
+    const angle = (newCount * 73) % 360;
+    const radians = angle * (Math.PI / 180);
+    const nextOffset = {
+      x: Math.cos(radians) * movementScale + Math.sin(newCount * 1.9) * turbulence,
+      y: Math.sin(radians) * movementScale + Math.cos(newCount * 2.3) * turbulence
+    };
+
     setTapCount(newCount);
+    setMashOffset(nextOffset);
     tapCountRef.current = newCount;
     
     socket.emit('player:minigame_progress', {
@@ -984,17 +1021,15 @@ const PlayerView = () => {
 
     // Sweeps back and forth 3 times over the duration
     const sweep = Math.abs(Math.sin((timeLeft / minigameDuration) * Math.PI * 3)) * 100;
+    const absoluteError = Math.abs(sweep - bluffTargetCenter);
 
     let degreeOfSuccess = 'failure';
-    // Target zone is visually between 70% and 85%
-    if (sweep >= 74 && sweep <= 81) {
+    if (absoluteError <= bluffCriticalWindow / 2) {
       degreeOfSuccess = 'critical_success';
-    } else if (sweep >= 70 && sweep <= 85) {
+    } else if (absoluteError <= bluffSuccessWindow / 2) {
       degreeOfSuccess = 'success';
-    } else if (sweep >= 65 && sweep <= 90) {
+    } else if (absoluteError <= Math.max(bluffSuccessWindow / 2 + 8, bluffCriticalWindow / 2 + 10)) {
       degreeOfSuccess = 'mixed_success';
-    } else if (sweep < 55 || sweep > 100) {
-      degreeOfSuccess = 'critical_failure';
     }
 
     minigameReportedRef.current = true;
@@ -1002,6 +1037,7 @@ const PlayerView = () => {
   };
   const handleMinigameComplete = (degreeOfSuccess: string) => {
     setActiveMinigame(null);
+    setMashOffset({ x: 0, y: 0 });
     socket.emit('player:minigame_complete', {
       roomCode: character.room_code,
       deviceToken: getDeviceToken(),
@@ -1112,6 +1148,11 @@ const PlayerView = () => {
     }
 
     if (activeMinigame === 'overload') {
+      const overloadColor = tapCount < 8 ? '#ef4444' : tapCount < 16 ? '#fb7185' : tapCount < 24 ? '#f59e0b' : '#22c55e';
+      const overloadBorder = tapCount < 8 ? '#fda4af' : tapCount < 16 ? '#fecdd3' : tapCount < 24 ? '#fde68a' : '#86efac';
+      const overloadGlow = tapCount < 8 ? 'rgba(248,113,113,0.9)' : tapCount < 16 ? 'rgba(244,114,182,0.95)' : tapCount < 24 ? 'rgba(251,191,36,0.95)' : 'rgba(74,222,128,0.95)';
+      const pulseScale = 1 + Math.min(0.25, tapCount * 0.012);
+
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-red-950">
           <h2 className="text-4xl font-black text-red-500 mb-2 animate-pulse">OVERLOAD</h2>
@@ -1123,14 +1164,23 @@ const PlayerView = () => {
             </div>
           )}
           
-          <button 
-            onPointerDown={handleTap} // Better than onClick for fast mobile taps
-            className="w-64 h-64 rounded-full bg-red-600 border-8 border-red-800 shadow-[0_0_50px_rgba(220,38,38,0.8)] active:bg-red-500 active:scale-95 transition-all flex items-center justify-center select-none"
-          >
-            <span className="text-6xl font-black text-white">{tapCount}</span>
-          </button>
+          <div className="relative w-80 h-80 rounded-full border border-red-400/30 bg-red-950/60 flex items-center justify-center overflow-hidden shadow-[0_0_30px_rgba(127,29,29,0.55)]">
+            <div className="absolute inset-3 rounded-full border border-red-500/20"></div>
+            <button 
+              onPointerDown={handleTap}
+              className="absolute w-40 h-40 rounded-full flex items-center justify-center select-none transition-all duration-75 ease-out"
+              style={{
+                transform: `translate(${mashOffset.x}px, ${mashOffset.y}px) scale(${pulseScale})`,
+                backgroundColor: overloadColor,
+                border: `8px solid ${overloadBorder}`,
+                boxShadow: `0 0 ${24 + tapCount * 1.5}px ${overloadGlow}, inset 0 0 16px rgba(255,255,255,0.25)`
+              }}
+            >
+              <span className="text-5xl font-black text-white">{tapCount}</span>
+            </button>
+          </div>
           
-          <p className="mt-12 text-slate-400 text-lg">MASH TO CRASH ASSET!</p>
+          <p className="mt-12 text-slate-300 text-lg text-center">MASH THE MOVING CORE!</p>
         </div>
       );
     }
@@ -1176,6 +1226,10 @@ const PlayerView = () => {
 
     if (activeMinigame === 'bluff') {
       const sweep = Math.abs(Math.sin((timeLeft / minigameDuration) * Math.PI * 3)) * 100;
+      const successLeft = Math.max(0, bluffTargetCenter - bluffSuccessWindow / 2);
+      const successWidth = Math.min(bluffSuccessWindow, 100 - successLeft);
+      const criticalLeft = Math.max(0, bluffTargetCenter - bluffCriticalWindow / 2);
+      const criticalWidth = Math.min(bluffCriticalWindow, 100 - criticalLeft);
       return (
         <div 
           className="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-950 cursor-pointer"
@@ -1191,10 +1245,14 @@ const PlayerView = () => {
           )}
           
           <div className="relative w-full max-w-sm h-16 bg-amber-950 rounded-full border-4 border-amber-900 overflow-hidden shadow-[0_0_20px_rgba(245,158,11,0.5)]">
-             {/* Mixed Success Zone (65% to 90%) */}
-             <div className="absolute top-0 bottom-0 left-[65%] right-[10%] bg-green-500/20 border-x-2 border-green-500/50"></div>
-             {/* Critical Success Zone (74% to 81%) */}
-             <div className="absolute top-0 bottom-0 left-[74%] right-[19%] bg-green-400/60 border-x-4 border-green-400"></div>
+             <div 
+               className="absolute top-0 bottom-0 bg-green-500/20 border-x-2 border-green-500/50"
+               style={{ left: `${successLeft}%`, width: `${successWidth}%` }}
+             ></div>
+             <div 
+               className="absolute top-0 bottom-0 bg-green-400/60 border-x-4 border-green-400"
+               style={{ left: `${criticalLeft}%`, width: `${criticalWidth}%` }}
+             ></div>
              
              {/* Moving Bar */}
              <div 
