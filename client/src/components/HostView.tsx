@@ -4,6 +4,7 @@ import CityBackground from './CityBackground';
 import HostMinigameDisplay from './HostMinigameDisplay';
 import { ClockCard, type Clock } from './ClockDisplay';
 import { MINIGAME_META } from '../minigames';
+import { HealthBar, StressBar } from './StatBars';
 
 // ─── Result label/tone maps ───────────────────────────────────────────────────
 
@@ -377,8 +378,18 @@ export default function HostView() {
                       style={{ animation: fx?.kind==='wound'?'host-card-shake 0.35s ease-in-out':fx?.kind==='heal'?'host-card-heal 0.45s ease-in-out':undefined }}
                     >
                       <div className="font-bold text-xl flex justify-between items-center">{c.name}{c.is_online===0&&<span className="text-xs font-black text-red-500 bg-red-950 px-2 py-1 rounded">OFFLINE</span>}</div>
-                      <div className="text-xs text-slate-400 mt-2">HP: {c.health}/3 | ฿: {c.credits}</div>
-                      <div className="text-xs text-amber-300 mt-2">BACKGROUND: {c.background||'Unassigned'}</div>
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-green-400 uppercase font-bold w-10 shrink-0">HEALTH</span>
+                          <HealthBar health={c.health ?? 0} maxHealth={c.max_health ?? 3} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-yellow-400 uppercase font-bold w-10 shrink-0">STRESS</span>
+                          <StressBar stress={c.stress ?? 8} maxStress={c.max_stress ?? 8} />
+                        </div>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-1">฿: {c.credits}</div>
+                      <div className="text-xs text-amber-300 mt-1">BACKGROUND: {c.background||'Unassigned'}</div>
                     </div>
                   );
                 })}

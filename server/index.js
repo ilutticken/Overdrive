@@ -50,8 +50,8 @@ const upsertCharacterStmt = db.prepare(`
 // Player (persistent) prepared statements
 const getPlayerStmt = db.prepare('SELECT * FROM players WHERE device_token = ?');
 const upsertPlayerStmt = db.prepare(`
-  INSERT INTO players (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes)
-  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes)
+  INSERT INTO players (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes, stress, max_stress)
+  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes, @stress, @max_stress)
   ON CONFLICT(device_token) DO UPDATE SET
     name = excluded.name,
     meat = excluded.meat,
@@ -64,16 +64,18 @@ const upsertPlayerStmt = db.prepare(`
     gear = excluded.gear,
     status_effects = excluded.status_effects,
     notes = excluded.notes,
+    stress = excluded.stress,
+    max_stress = excluded.max_stress,
     updated_at = CURRENT_TIMESTAMP
 `);
 const updatePlayerStmt = db.prepare(`
-  UPDATE players SET name = @name, meat = @meat, mind = @mind, moxie = @moxie, background = @background, health = @health, max_health = @max_health, credits = @credits, gear = @gear, status_effects = @status_effects, notes = @notes, updated_at = CURRENT_TIMESTAMP WHERE device_token = @device_token
+  UPDATE players SET name = @name, meat = @meat, mind = @mind, moxie = @moxie, background = @background, health = @health, max_health = @max_health, credits = @credits, gear = @gear, status_effects = @status_effects, notes = @notes, stress = @stress, max_stress = @max_stress, updated_at = CURRENT_TIMESTAMP WHERE device_token = @device_token
 `);
 const getProfilesStmt = db.prepare('SELECT * FROM character_profiles WHERE device_token = ? ORDER BY last_used DESC, created_at DESC');
 const getProfileByIdStmt = db.prepare('SELECT * FROM character_profiles WHERE id = ?');
 const insertProfileStmt = db.prepare(`
-  INSERT INTO character_profiles (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes, last_used)
-  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes, @last_used)
+  INSERT INTO character_profiles (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes, stress, max_stress, last_used)
+  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes, @stress, @max_stress, @last_used)
 `);
 const updateProfileLastUsedStmt = db.prepare('UPDATE character_profiles SET last_used = ? WHERE id = ?');
 const deleteProfileStmt = db.prepare('DELETE FROM character_profiles WHERE id = ? AND device_token = ?');
@@ -89,7 +91,10 @@ const mergeCharacterRecord = (characterRecord) => {
     gear: p.gear ?? characterRecord.gear,
     status_effects: p.status_effects ?? characterRecord.status_effects,
     notes: p.notes ?? characterRecord.notes,
-    auto_lose_on_fail: p.auto_lose_on_fail ?? 0
+    auto_lose_on_fail: p.auto_lose_on_fail ?? 0,
+    auto_lose_stress_on_fail: p.auto_lose_stress_on_fail ?? 0,
+    stress: (p.stress !== undefined && p.stress !== null) ? p.stress : (characterRecord.stress ?? 8),
+    max_stress: (p.max_stress !== undefined && p.max_stress !== null) ? p.max_stress : (characterRecord.max_stress ?? 8),
   };
 };
 
@@ -124,7 +129,10 @@ const activeClocks = new Map();
 let clockIdCounter = 1;
 const updatePlayerHealthStmt = db.prepare('UPDATE players SET health = ? WHERE device_token = ?');
 const updateCharacterHealthStmt = db.prepare('UPDATE characters SET health = ? WHERE room_code = ? AND device_token = ?');
+const updatePlayerStressStmt = db.prepare('UPDATE players SET stress = ? WHERE device_token = ?');
+const updateCharacterStressStmt = db.prepare('UPDATE characters SET stress = ? WHERE room_code = ? AND device_token = ?');
 const setPlayerAutoLoseStmt = db.prepare('UPDATE players SET auto_lose_on_fail = ? WHERE device_token = ?');
+const setPlayerAutoLoseStressStmt = db.prepare('UPDATE players SET auto_lose_stress_on_fail = ? WHERE device_token = ?');
 
 
 io.on('connection', (socket) => {
@@ -212,7 +220,9 @@ io.on('connection', (socket) => {
             credits: saved.credits,
             gear: saved.gear,
             status_effects: saved.status_effects,
-            notes: saved.notes
+            notes: saved.notes,
+            stress: saved.stress ?? 8,
+            max_stress: saved.max_stress ?? 8,
           };
           // mark profile last_used
           try { updateProfileLastUsedStmt.run(new Date().toISOString(), saved.id); } catch (e) {}
@@ -234,7 +244,9 @@ io.on('connection', (socket) => {
           credits: (stats && (stats.credits ?? undefined)) || (existingPlayer && existingPlayer.credits) || 0,
           gear: (existingPlayer && existingPlayer.gear) || '[]',
           status_effects: (existingPlayer && existingPlayer.status_effects) || '[]',
-          notes: (existingPlayer && existingPlayer.notes) || ''
+          notes: (existingPlayer && existingPlayer.notes) || '',
+          stress: (existingPlayer && existingPlayer.stress !== undefined && existingPlayer.stress !== null) ? existingPlayer.stress : 8,
+          max_stress: (existingPlayer && existingPlayer.max_stress) || 8,
         };
       }
 
@@ -303,7 +315,9 @@ io.on('connection', (socket) => {
           credits: data.credits || 0,
           gear: data.gear || '[]',
           status_effects: data.status_effects || '[]',
-          notes: data.notes || ''
+          notes: data.notes || '',
+          stress: data.stress ?? 8,
+          max_stress: data.max_stress ?? 8,
         });
       } else {
         // Update existing
@@ -319,7 +333,9 @@ io.on('connection', (socket) => {
           credits: data.credits ?? existing.credits,
           gear: data.gear ?? existing.gear,
           status_effects: data.status_effects ?? existing.status_effects,
-          notes: data.notes ?? existing.notes
+          notes: data.notes ?? existing.notes,
+          stress: data.stress ?? existing.stress ?? 8,
+          max_stress: data.max_stress ?? existing.max_stress ?? 8,
         });
       }
 
@@ -358,7 +374,7 @@ io.on('connection', (socket) => {
 
   // Create a new persistent character profile for this device
   socket.on('player:create_profile', (data, callback) => {
-    const { deviceToken, name, meat = 1, mind = 1, moxie = 1, background = '', health = 3, max_health = 3, credits = 0, gear = '[]', status_effects = '[]', notes = '' } = data || {};
+    const { deviceToken, name, meat = 1, mind = 1, moxie = 1, background = '', health = 3, max_health = 3, credits = 0, gear = '[]', status_effects = '[]', notes = '', stress = 8, max_stress = 8 } = data || {};
     if (!deviceToken) return callback?.({ success: false, message: 'Missing deviceToken' });
     try {
       const info = insertProfileStmt.run({
@@ -374,6 +390,8 @@ io.on('connection', (socket) => {
         gear,
         status_effects,
         notes,
+        stress,
+        max_stress,
         last_used: new Date().toISOString()
       });
 
@@ -416,6 +434,23 @@ io.on('connection', (socket) => {
     }
   });
 
+  // GM toggles auto-lose-stress-on-fail for a player
+  socket.on('gm:set_auto_lose_stress', (data, callback) => {
+    const { roomCode, deviceToken, enabled } = data || {};
+    if (!roomCode || !deviceToken) return callback?.({ success: false, message: 'Missing parameters' });
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    try {
+      setPlayerAutoLoseStressStmt.run(enabled ? 1 : 0, deviceToken);
+      const characters = getCharactersStmt.all(uppercaseRoomCode);
+      const merged = characters.map(mergeCharacterRecord);
+      io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: getRoomStmt.get(uppercaseRoomCode).state });
+      if (callback) callback({ success: true });
+    } catch (e) {
+      console.error('Error setting auto lose stress flag (GM)', e);
+      if (callback) callback({ success: false, message: 'DB error' });
+    }
+  });
+
   // GM sets a player's health directly (clamped 0..max)
   socket.on('gm:set_player_health', (data, callback) => {
     const { roomCode, deviceToken, newHealth } = data || {};
@@ -432,6 +467,27 @@ io.on('connection', (socket) => {
       if (callback) callback({ success: true });
     } catch (e) {
       console.error('Error setting player health', e);
+      if (callback) callback({ success: false, message: 'DB error' });
+    }
+  });
+
+  // GM sets a player's stress directly (clamped 0..max)
+  socket.on('gm:set_player_stress', (data, callback) => {
+    const { roomCode, deviceToken, newStress } = data || {};
+    if (!roomCode || !deviceToken || typeof newStress !== 'number') return callback?.({ success: false, message: 'Missing parameters' });
+    const uppercaseRoomCode = roomCode.toUpperCase();
+    try {
+      const player = getPlayerStmt.get(deviceToken);
+      if (!player) return callback?.({ success: false, message: 'Player not found' });
+      const clamped = Math.max(0, Math.min(newStress, player.max_stress || 8));
+      updatePlayerStressStmt.run(clamped, deviceToken);
+      updateCharacterStressStmt.run(clamped, uppercaseRoomCode, deviceToken);
+      const characters = getCharactersStmt.all(uppercaseRoomCode);
+      const merged = characters.map(mergeCharacterRecord);
+      io.to(uppercaseRoomCode).emit('room:state_update', { characters: merged, roomState: getRoomStmt.get(uppercaseRoomCode).state });
+      if (callback) callback({ success: true });
+    } catch (e) {
+      console.error('Error setting player stress', e);
       if (callback) callback({ success: false, message: 'DB error' });
     }
   });

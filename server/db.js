@@ -101,6 +101,25 @@ const initSchema = () => {
   try {
     db.exec(`ALTER TABLE character_profiles ADD COLUMN background TEXT DEFAULT '';`);
   } catch (err) {}
+  // Stress
+  try {
+    db.exec(`ALTER TABLE players ADD COLUMN stress INTEGER DEFAULT 8;`);
+  } catch (err) {}
+  try {
+    db.exec(`ALTER TABLE players ADD COLUMN max_stress INTEGER DEFAULT 8;`);
+  } catch (err) {}
+  try {
+    db.exec(`ALTER TABLE characters ADD COLUMN stress INTEGER DEFAULT 8;`);
+  } catch (err) {}
+  try {
+    db.exec(`ALTER TABLE character_profiles ADD COLUMN stress INTEGER DEFAULT 8;`);
+  } catch (err) {}
+  try {
+    db.exec(`ALTER TABLE character_profiles ADD COLUMN max_stress INTEGER DEFAULT 8;`);
+  } catch (err) {}
+  try {
+    db.exec(`ALTER TABLE players ADD COLUMN auto_lose_stress_on_fail INTEGER DEFAULT 0;`);
+  } catch (err) {}
 };
 
 initSchema();

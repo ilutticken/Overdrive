@@ -3,6 +3,7 @@ import { socket } from '../socket';
 import { MINIGAME_META } from '../minigames';
 import { ClockGMCard, type Clock } from './ClockDisplay';
 import type { GlitchType } from '../minigames/types';
+import { HealthBar, StressBar } from './StatBars';
 
 // Mini-games grouped by attribute for the GM panel
 const MINIGAME_GROUPS: Array<{ label: string; types: string[] }> = [
@@ -116,9 +117,21 @@ export default function GMView() {
     });
   };
 
+  const setStress = (deviceToken: string, newStress: number) => {
+    socket.emit('gm:set_player_stress', { roomCode, deviceToken, newStress }, (res: any) => {
+      if (!res?.success) showError(res?.message || 'Failed to set Stress');
+    });
+  };
+
   const setAutoLose = (deviceToken: string, enabled: boolean) => {
     socket.emit('gm:set_auto_lose', { roomCode, deviceToken, enabled }, (res: any) => {
       if (!res?.success) showError(res?.message || 'Failed to set auto-lose');
+    });
+  };
+
+  const setAutoLoseStress = (deviceToken: string, enabled: boolean) => {
+    socket.emit('gm:set_auto_lose_stress', { roomCode, deviceToken, enabled }, (res: any) => {
+      if (!res?.success) showError(res?.message || 'Failed to set auto-lose stress');
     });
   };
 
@@ -339,11 +352,53 @@ export default function GMView() {
           const setDs = (patch: Partial<typeof ds>) => setDossierSetup(s => ({ ...s, [c.device_token]: { ...ds, ...patch } }));
           return (
             <div key={i} className={`bg-slate-800 p-4 rounded-lg border border-slate-700 ${c.is_online===0?'opacity-40 grayscale':''}`}>
-              <h3 className="text-lg font-bold text-white mb-2">{c.name}</h3>
-              <div className="flex justify-between text-sm mb-3">
-                <span className="text-green-400">HP: {c.health}/3</span>
-                <span className="text-yellow-400">฿: {c.credits}</span>
+              {/* Name + credits */}
+              <div className="flex justify-between items-start mb-3">
+                <h3 className="text-lg font-bold text-white">{c.name}</h3>
+                <span className="text-sm text-yellow-400 shrink-0 ml-2">฿{c.credits}</span>
               </div>
+
+              {/* Health bar + controls */}
+              <div className="mb-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-green-400 uppercase tracking-widest font-bold">HEALTH</span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setHealth(c.device_token, Math.max(0, Number(c.health||0)-1))}
+                      className="w-6 h-6 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm leading-none"
+                      disabled={c.is_online === 0}>−</button>
+                    <button onClick={() => setHealth(c.device_token, Math.min(c.max_health||3, Number(c.health||0)+1))}
+                      className="w-6 h-6 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm leading-none"
+                      disabled={c.is_online === 0}>+</button>
+                    <label className="flex items-center gap-0.5 ml-1 cursor-pointer text-slate-400">
+                      <input type="checkbox" checked={Number(c.auto_lose_on_fail)===1} onChange={e => setAutoLose(c.device_token, e.target.checked)} className="w-3 h-3" />
+                      <span className="text-[9px] uppercase">auto</span>
+                    </label>
+                  </div>
+                </div>
+                <HealthBar health={c.health ?? 0} maxHealth={c.max_health ?? 3} />
+              </div>
+
+              {/* Stress bar + controls */}
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] text-yellow-400 uppercase tracking-widest font-bold">STRESS</span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setStress(c.device_token, Math.max(0, Number(c.stress??8)-1))}
+                      className="w-6 h-6 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm leading-none"
+                      disabled={c.is_online === 0}>−</button>
+                    <button onClick={() => setStress(c.device_token, Math.min(c.max_stress??8, Number(c.stress??8)+1))}
+                      className="w-6 h-6 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm leading-none"
+                      disabled={c.is_online === 0}>+</button>
+                    <label className="flex items-center gap-0.5 ml-1 cursor-pointer text-slate-400">
+                      <input type="checkbox" checked={Number(c.auto_lose_stress_on_fail)===1} onChange={e => setAutoLoseStress(c.device_token, e.target.checked)} className="w-3 h-3" />
+                      <span className="text-[9px] uppercase">auto</span>
+                    </label>
+                  </div>
+                </div>
+                <StressBar stress={c.stress ?? 8} maxStress={c.max_stress ?? 8} />
+              </div>
+
+              {/* MEAT / MIND / MOXIE */}
               <div className="grid grid-cols-3 gap-1 text-xs text-center mb-3">
                 {(['MEAT','MIND','MOXIE'] as const).map(stat => (
                   <div key={stat} className="bg-slate-900 p-1.5 rounded">
@@ -420,16 +475,6 @@ export default function GMView() {
                   </button>
                 </div>
 
-                {/* Health + auto-lose */}
-                <div className="flex gap-2 items-center border-t border-slate-700 pt-3">
-                  <button onClick={() => setHealth(c.device_token, Math.max(0, Number(c.health||0)-1))} className="w-10 h-8 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm">−</button>
-                  <div className="text-xs text-slate-300 flex-1 text-center">HP {c.health}/{c.max_health||3}</div>
-                  <button onClick={() => setHealth(c.device_token, Math.min(c.max_health||3, Number(c.health||0)+1))} className="w-10 h-8 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm">+</button>
-                  <label className="flex items-center gap-1 text-slate-400">
-                    <input type="checkbox" checked={Number(c.auto_lose_on_fail)===1} onChange={e => setAutoLose(c.device_token, e.target.checked)} />
-                    <span className="text-[10px]">Auto-lose</span>
-                  </label>
-                </div>
               </div>
             </div>
           );

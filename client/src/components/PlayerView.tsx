@@ -4,6 +4,7 @@ import { MINIGAME_REGISTRY, computeSetup } from '../minigames';
 import type { MinigameSetup, DegreeOfSuccess, GlitchType } from '../minigames';
 import GlitchLayer from './GlitchLayer';
 import ConsequencePicker, { type Position, type Effect } from './ConsequencePicker';
+import { HealthBar, StressBar } from './StatBars';
 
 // ─── Warning display config ───────────────────────────────────────────────────
 
@@ -282,6 +283,7 @@ export default function PlayerView() {
       meat: stats.meat, mind: stats.mind, moxie: stats.moxie,
       background: bg?.label || '', health: 3, max_health: 3,
       credits: 0, gear: '[]', status_effects: '[]', notes: '',
+      stress: 8, max_stress: 8,
     }, (res: any) => {
       if (res.success) { fetchProfiles(); setSelectedProfileId(res.id||null); setShowProfiles(true); setShowCreate(false); setName(res.profile.name||''); setCreateName(''); }
       else alert(res.message || 'Failed to create profile');
@@ -519,9 +521,18 @@ export default function PlayerView() {
       >
         <h1 className="text-3xl font-bold">{character?.name}</h1>
         <div className="mt-2 text-sm text-amber-200">BACKGROUND: {character?.background||'Unassigned'}</div>
-        <div className="flex justify-between mt-2 text-sm text-fuchsia-300 mb-4">
-          <span>SYS INTEGRITY: {character?.health}/3</span>
-          <span>CREDITS: ฿{character?.credits}</span>
+        <div className="mt-2 mb-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-fuchsia-300 shrink-0">HEALTH</span>
+              <HealthBar health={character?.health ?? 0} maxHealth={character?.max_health ?? 3} />
+            </div>
+            <span className="text-sm text-fuchsia-300 shrink-0">฿{character?.credits}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-fuchsia-300 shrink-0 w-[7.5rem]">STRESS</span>
+            <StressBar stress={character?.stress ?? 8} maxStress={character?.max_stress ?? 8} />
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           {(['MEAT','MIND','MOXIE'] as const).map(s => (

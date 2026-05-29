@@ -3,7 +3,9 @@
     "allow": [
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\sushi\\\\OneDrive\\\\Documents\\\\Overdrive\\\\client\\\\src\" -Recurse -File -Filter \"*.tsx\")",
       "Bash(Select-Object Name, FullName)",
-      "Bash(findstr /S /M \"consequence\\\\|result.*screen\\\\|post.*game\\\\|Clock\\\\|Position.*Effect\" .)"
+      "Bash(findstr /S /M \"consequence\\\\|result.*screen\\\\|post.*game\\\\|Clock\\\\|Position.*Effect\" .)",
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\sushi\\\\OneDrive\\\\Documents\\\\Overdrive\" -Depth 1 | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object FullName, PSIsContainer)",
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\sushi\\\\OneDrive\\\\Documents\\\\Overdrive\\\\client\\\\src\" -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName)"
     ]
   }
 }
