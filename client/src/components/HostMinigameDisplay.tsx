@@ -201,6 +201,40 @@ function SurveillanceDisplay() {
   );
 }
 
+// ─── Doctor ───────────────────────────────────────────────────────────────────
+// Shows a step-progress strip so spectators can follow along.
+function DoctorDisplay({ progress }: { progress: number }) {
+  // progress encodes: stepIndex * 10 + successes (emitted by Doctor component)
+  const stepIndex = Math.floor(progress / 10);
+  const successes = progress % 10;
+  const STEPS = ['STEP 1', 'STEP 2', 'STEP 3'];
+  return (
+    <div className="flex flex-col items-center gap-6 w-full max-w-xl">
+      <div className="flex gap-4 items-center">
+        {STEPS.map((label, i) => (
+          <React.Fragment key={i}>
+            <div className={`flex flex-col items-center gap-2`}>
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-black transition-all
+                ${i < stepIndex  ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(52,211,153,0.7)]' :
+                  i === stepIndex ? 'bg-white text-slate-900 scale-110 animate-pulse' :
+                                    'bg-slate-800 text-slate-500 border-2 border-slate-700'}`}>
+                {i < stepIndex ? '✓' : i + 1}
+              </div>
+              <span className={`text-xs uppercase tracking-widest font-bold ${i === stepIndex ? 'text-white' : 'text-slate-500'}`}>{label}</span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div className={`w-12 h-0.5 mb-4 transition-colors ${i < stepIndex ? 'bg-emerald-500' : 'bg-slate-700'}`} />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+      <div className="text-emerald-400 font-mono text-lg">
+        {successes}/{stepIndex} STEPS SUCCESSFUL
+      </div>
+    </div>
+  );
+}
+
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 const DISPLAYS: Record<string, React.ComponentType<any>> = {
@@ -213,13 +247,14 @@ const DISPLAYS: Record<string, React.ComponentType<any>> = {
   scan:         ScanDisplay,
   jam:          JamDisplay,
   surveillance: SurveillanceDisplay,
+  doctor:       DoctorDisplay,
 };
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 interface Props {
-  type: string;
-  progress: number; // only used by Overload
+  type:     string;
+  progress: number; // Overload: tap count. Doctor: stepIndex*10 + successes.
 }
 
 export default function HostMinigameDisplay({ type, progress }: Props) {

@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { socket } from '../socket';
 import { MINIGAME_REGISTRY, computeSetup } from '../minigames';
-import type { MinigameSetup, DegreeOfSuccess } from '../minigames';
+import type { MinigameSetup, DegreeOfSuccess, GlitchType } from '../minigames';
+import GlitchLayer from './GlitchLayer';
+import ConsequencePicker, { type Position, type Effect } from './ConsequencePicker';
 
 // ─── Warning display config ───────────────────────────────────────────────────
 
@@ -61,6 +63,17 @@ export default function PlayerView() {
 
   // Active mini-game
   const [activeSetup, setActiveSetup]   = useState<MinigameSetup | null>(null);
+  const [activePosition, setActivePosition] = useState<Position>('risky');
+  const [activeEffect, setActiveEffect]     = useState<Effect>('standard');
+  // Glitches accumulate per scene from consequences/conditions.
+  // Cleared at scene end (GM control) or via specific abilities.
+  const [activeGlitches, setActiveGlitches] = useState<GlitchType[]>([]);
+  // Pending consequence selection — shown after a mini-game resolves
+  const [pendingConsequence, setPendingConsequence] = useState<{
+    degree: DegreeOfSuccess;
+    position: Position;
+    effect: Effect;
+  } | null>(null);
   const [warningType, setWarningType]   = useState<string | null>(null);
   const [warningModifier, setWarningModifier]     = useState<any>(null);
   const [warningDifficulty, setWarningDifficulty] = useState<string | null>(null);
@@ -118,6 +131,17 @@ export default function PlayerView() {
     }
   }, [dossierTimeLeft, activeDossier]);
 
+  const handleConsequenceSubmit = (choices: string[]) => {
+    if (!character) return;
+    socket.emit('player:consequence_selected', {
+      roomCode: character.room_code,
+      deviceToken: getDeviceToken(),
+      choices,
+      degreeOfSuccess: pendingConsequence?.degree,
+    });
+    setPendingConsequence(null);
+  };
+
   // Mini-game completion handler — emits result to server
   const handleMinigameComplete = (degree: DegreeOfSuccess) => {
     if (!character) return;
@@ -152,11 +176,15 @@ export default function PlayerView() {
       setWarningType(d.minigameType);
       setWarningModifier(d.modifier || null);
       setWarningDifficulty(d.difficultyTier || null);
+      setActivePosition((d.position as Position) || 'risky');
+      setActiveEffect((d.effect as Effect) || 'standard');
     });
 
     socket.on('room:minigame_started', d => {
       if (d.targetDeviceToken !== getDeviceToken()) return;
       setWarningType(null);
+      setActivePosition((d.position as Position) || 'risky');
+      setActiveEffect((d.effect as Effect) || 'standard');
       const setup = computeSetup(
         d.minigameType,
         character ? { meat: character.meat, mind: character.mind, moxie: character.moxie } : null,
@@ -166,11 +194,33 @@ export default function PlayerView() {
       setActiveSetup(setup);
     });
 
-    socket.on('room:minigame_result', () => {
+    socket.on('room:minigame_result', d => {
       setActiveSetup(null);
       setActiveDossier(false);
       setDossierClues([]);
       setWarningType(null);
+      // Show consequence picker for the target player
+      if (d.deviceToken === getDeviceToken()) {
+        setPendingConsequence({
+          degree:   d.degreeOfSuccess as DegreeOfSuccess,
+          position: (d.position as Position) || activePosition,
+          effect:   (d.effect as Effect)     || activeEffect,
+        });
+      }
+    });
+
+    socket.on('room:consequence_override', d => {
+      if (!d.deviceToken || d.deviceToken === getDeviceToken()) {
+        setPendingConsequence(null);
+      }
+    });
+
+    socket.on('room:glitch_applied', (d: { glitch: GlitchType }) => {
+      setActiveGlitches(prev => [...prev, d.glitch]);
+    });
+
+    socket.on('room:glitches_cleared', () => {
+      setActiveGlitches([]);
     });
 
     socket.on('room:flash_draw_prepare', () => { beep(); setFlashDrawState('prepare'); });
@@ -201,7 +251,8 @@ export default function PlayerView() {
     return () => {
       ['room:state_update','room:minigame_warning','room:minigame_started','room:minigame_result',
        'room:flash_draw_prepare','room:flash_draw_go','room:flash_draw_complete',
-       'room:dossier_started','room:dossier_update'].forEach(e => socket.off(e));
+       'room:dossier_started','room:dossier_update',
+       'room:glitch_applied','room:glitches_cleared','room:consequence_override'].forEach(e => socket.off(e));
     };
   }, [joined, character]);
 
@@ -349,6 +400,18 @@ export default function PlayerView() {
 
   // ── Render: joined ───────────────────────────────────────────────────────────
 
+  // Consequence picker — shown after a mini-game result, before returning to idle
+  if (pendingConsequence) {
+    return (
+      <ConsequencePicker
+        degree={pendingConsequence.degree}
+        position={pendingConsequence.position}
+        effect={pendingConsequence.effect}
+        onSubmit={handleConsequenceSubmit}
+      />
+    );
+  }
+
   // Flash draw screens
   if (flashDrawState === 'prepare') return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-red-900 border-8 border-red-500 animate-pulse duration-75">
@@ -375,8 +438,16 @@ export default function PlayerView() {
       <div className={`flex flex-col items-center justify-center min-h-screen p-6 ${w.bg} border-8 ${w.border} animate-pulse duration-75`}>
         <h2 className={`text-5xl font-black ${w.color} mb-6 text-center drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]`}>⚠️ {w.label} ⚠️</h2>
         <div className={`mt-12 text-xl ${w.color.replace('500','300')} tracking-[0.2em] animate-bounce`}>{w.sub}</div>
+        <div className="flex gap-3 mt-8">
+          <div className={`px-4 py-1.5 rounded-full border text-sm font-black uppercase tracking-widest ${activePosition==='controlled'?'border-green-500 bg-green-950/80 text-green-300':activePosition==='desperate'?'border-red-500 bg-red-950/80 text-red-300':'border-amber-500 bg-amber-950/80 text-amber-300'}`}>
+            {activePosition.toUpperCase()}
+          </div>
+          <div className={`px-4 py-1.5 rounded-full border text-sm font-black uppercase tracking-widest ${activeEffect==='great'?'border-purple-500 bg-purple-950/80 text-purple-300':activeEffect==='limited'?'border-slate-500 bg-slate-800 text-slate-300':'border-cyan-500 bg-cyan-950/80 text-cyan-300'}`}>
+            {activeEffect.toUpperCase()} EFFECT
+          </div>
+        </div>
         {warningModifier && (
-          <div className="mt-10 max-w-2xl rounded border border-white/20 bg-black/50 px-6 py-4 text-center backdrop-blur">
+          <div className="mt-6 max-w-2xl rounded border border-white/20 bg-black/50 px-6 py-4 text-center backdrop-blur">
             <div className="text-xs uppercase tracking-[0.35em] text-cyan-300">DIFFICULTY · {warningDifficulty?.toUpperCase()||'STANDARD'}</div>
             <div className="mt-2 text-2xl font-bold text-white">{warningModifier.label}</div>
             <div className="mt-1 text-sm text-slate-200">{warningModifier.description}</div>
@@ -386,17 +457,19 @@ export default function PlayerView() {
     );
   }
 
-  // Active mini-game — look up component from registry and render it
+  // Active mini-game — wrapped in GlitchLayer so stacked glitches fire independently
   if (activeSetup) {
     const Component = MINIGAME_REGISTRY[activeSetup.type];
     if (Component) {
       return (
-        <Component
-          setup={activeSetup}
-          onComplete={handleMinigameComplete}
-          roomCode={character?.room_code || roomCode}
-          deviceToken={getDeviceToken()}
-        />
+        <GlitchLayer glitches={activeGlitches}>
+          <Component
+            setup={activeSetup}
+            onComplete={handleMinigameComplete}
+            roomCode={character?.room_code || roomCode}
+            deviceToken={getDeviceToken()}
+          />
+        </GlitchLayer>
       );
     }
   }

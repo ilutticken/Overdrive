@@ -118,6 +118,10 @@ const activeMinigames = new Map();
 const activeFlashDraws = new Map();
 const activeCombatQueues = new Map();
 const activeDossiers = new Map();
+// Clocks: Map<roomCode, Clock[]>
+// Clock shape: { id, name, type, segments, filled, visible }
+const activeClocks = new Map();
+let clockIdCounter = 1;
 const updatePlayerHealthStmt = db.prepare('UPDATE players SET health = ? WHERE device_token = ?');
 const updateCharacterHealthStmt = db.prepare('UPDATE characters SET health = ? WHERE room_code = ? AND device_token = ?');
 const setPlayerAutoLoseStmt = db.prepare('UPDATE players SET auto_lose_on_fail = ? WHERE device_token = ?');
@@ -479,7 +483,7 @@ io.on('connection', (socket) => {
 
   // 5. Minigame Flow
   socket.on('gm:start_minigame', (data, callback) => {
-    const { roomCode, targetDeviceToken, minigameType, difficultyTier } = data || {};
+    const { roomCode, targetDeviceToken, minigameType, difficultyTier, position, effect } = data || {};
     if (!roomCode || !targetDeviceToken) {
       if (callback) callback({ success: false, message: 'Missing parameters' });
       return;
@@ -510,11 +514,16 @@ io.on('connection', (socket) => {
     console.log(`Minigame ${minigameType} (${difficultyTier || 'medium'}) warning triggered for ${targetDeviceToken} in room ${uppercaseRoomCode}. Modifier: ${modifier?.label || 'None'}`);
 
     // Mark minigame active for this room
+    const resolvedPosition = position || 'risky';
+    const resolvedEffect   = effect   || 'standard';
+
     activeMinigames.set(uppercaseRoomCode, {
       targetDeviceToken,
       minigameType,
       difficultyTier: difficultyTier || 'medium',
-      modifier
+      modifier,
+      position: resolvedPosition,
+      effect:   resolvedEffect,
     });
 
     // 1. Emit warning immediately
@@ -522,7 +531,9 @@ io.on('connection', (socket) => {
       targetDeviceToken,
       minigameType,
       difficultyTier: difficultyTier || 'medium',
-      modifier
+      modifier,
+      position: resolvedPosition,
+      effect:   resolvedEffect,
     });
 
     // 2. Wait 2.5 seconds, then emit actual start
@@ -531,7 +542,9 @@ io.on('connection', (socket) => {
         targetDeviceToken,
         minigameType,
         difficultyTier: difficultyTier || 'medium',
-        modifier
+        modifier,
+        position: resolvedPosition,
+        effect:   resolvedEffect,
       });
     }, 2500);
 
@@ -567,8 +580,10 @@ io.on('connection', (socket) => {
       deviceToken,
       success,
       degreeOfSuccess,
-      modifier: activeMinigame.modifier,
-      difficultyTier: activeMinigame.difficultyTier
+      modifier:      activeMinigame.modifier,
+      difficultyTier:activeMinigame.difficultyTier,
+      position:      activeMinigame.position  || 'risky',
+      effect:        activeMinigame.effect    || 'standard',
     });
 
     // Clear active minigame state for this room
@@ -779,6 +794,114 @@ io.on('connection', (socket) => {
     activeCombatQueues.delete(uppercaseRoomCode);
     io.to(uppercaseRoomCode).emit('room:combat_queue_update', null);
     if (callback) callback({ success: true });
+  });
+
+  // ── Clocks ────────────────────────────────────────────────────────────────
+
+  const broadcastClocks = (roomCode) => {
+    const clocks = activeClocks.get(roomCode) || [];
+    io.to(roomCode).emit('room:clocks_update', { clocks });
+  };
+
+  socket.on('gm:create_clock', (data, callback) => {
+    const { roomCode, name, type, segments, visible } = data || {};
+    if (!roomCode || !name) return callback?.({ success: false, message: 'Missing parameters' });
+    const code = roomCode.toUpperCase();
+    if (!activeClocks.has(code)) activeClocks.set(code, []);
+    const clocks = activeClocks.get(code);
+    clocks.push({ id: clockIdCounter++, name, type: type || 'threat', segments: segments || 6, filled: 0, visible: visible !== false });
+    broadcastClocks(code);
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('gm:advance_clock', (data, callback) => {
+    const { roomCode, clockId, amount } = data || {};
+    if (!roomCode || !clockId) return callback?.({ success: false });
+    const code = roomCode.toUpperCase();
+    const clocks = activeClocks.get(code) || [];
+    const clock = clocks.find(c => c.id === clockId);
+    if (!clock) return callback?.({ success: false, message: 'Clock not found' });
+    clock.filled = Math.max(0, Math.min(clock.segments, clock.filled + (amount || 1)));
+    broadcastClocks(code);
+    if (callback) callback({ success: true, filled: clock.filled, complete: clock.filled >= clock.segments });
+  });
+
+  socket.on('gm:remove_clock', (data, callback) => {
+    const { roomCode, clockId } = data || {};
+    if (!roomCode || !clockId) return callback?.({ success: false });
+    const code = roomCode.toUpperCase();
+    const clocks = activeClocks.get(code) || [];
+    activeClocks.set(code, clocks.filter(c => c.id !== clockId));
+    broadcastClocks(code);
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('gm:toggle_clock_visibility', (data, callback) => {
+    const { roomCode, clockId } = data || {};
+    if (!roomCode || !clockId) return callback?.({ success: false });
+    const code = roomCode.toUpperCase();
+    const clock = (activeClocks.get(code) || []).find(c => c.id === clockId);
+    if (!clock) return callback?.({ success: false });
+    clock.visible = !clock.visible;
+    broadcastClocks(code);
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('gm:apply_glitch', (data, callback) => {
+    const { roomCode, deviceToken, glitch } = data || {};
+    if (!roomCode || !deviceToken || !glitch) return callback?.({ success: false });
+    io.to(roomCode.toUpperCase()).emit('room:glitch_applied', { deviceToken, glitch });
+    if (callback) callback({ success: true });
+  });
+
+  socket.on('gm:clear_glitches', (data, callback) => {
+    const { roomCode, deviceToken } = data || {};
+    if (!roomCode) return callback?.({ success: false });
+    io.to(roomCode.toUpperCase()).emit('room:glitches_cleared', { deviceToken: deviceToken || null });
+    if (callback) callback({ success: true });
+  });
+
+  // ── Consequence selection ─────────────────────────────────────────────────
+
+  socket.on('player:consequence_selected', (data) => {
+    const { roomCode, deviceToken, choices, degreeOfSuccess } = data || {};
+    if (!roomCode || !deviceToken) return;
+    const code = roomCode.toUpperCase();
+
+    // Auto-apply health damage consequences
+    choices?.forEach(choice => {
+      if (choice === 'health_1') {
+        try {
+          const player = getPlayerStmt.get(deviceToken);
+          if (player) {
+            const newHp = Math.max(0, (player.health || 0) - 1);
+            updatePlayerHealthStmt.run(newHp, deviceToken);
+            updateCharacterHealthStmt.run(newHp, code, deviceToken);
+          }
+        } catch (e) { console.error('Error applying health consequence', e); }
+      }
+    });
+
+    // Broadcast selection so GM and host can narrate it
+    io.to(code).emit('room:consequence_selected', { deviceToken, choices, degreeOfSuccess });
+
+    // Sync updated character state
+    const characters = getCharactersStmt.all(code);
+    const room = getRoomStmt.get(code);
+    if (room) io.to(code).emit('room:state_update', { characters: characters.map(mergeCharacterRecord), roomState: room.state });
+  });
+
+  socket.on('gm:override_consequence', (data) => {
+    const { roomCode, deviceToken } = data || {};
+    if (!roomCode || !deviceToken) return;
+    io.to(roomCode.toUpperCase()).emit('room:consequence_override', { deviceToken });
+  });
+
+  socket.on('player:request_clock_data', (data, callback) => {
+    const { roomCode } = data || {};
+    if (!roomCode) return callback?.({ success: false });
+    const clocks = activeClocks.get(roomCode.toUpperCase()) || [];
+    if (callback) callback({ success: true, clocks });
   });
 
   socket.on('disconnect', () => {

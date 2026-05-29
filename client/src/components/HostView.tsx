@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { socket } from '../socket';
 import CityBackground from './CityBackground';
 import HostMinigameDisplay from './HostMinigameDisplay';
+import { ClockCard, type Clock } from './ClockDisplay';
 import { MINIGAME_META } from '../minigames';
 
 // ─── Result label/tone maps ───────────────────────────────────────────────────
@@ -68,6 +69,9 @@ export default function HostView() {
   const [activeType, setActiveType]                 = useState<string | null>(null);
   const [activeDifficulty, setActiveDifficulty]     = useState<string | null>(null);
   const [activeModifier, setActiveModifier]         = useState<any>(null);
+  const [activePosition, setActivePosition]         = useState<string | null>(null);
+  const [activeEffect, setActiveEffect]             = useState<string | null>(null);
+  const [clocks, setClocks]                         = useState<Clock[]>([]);
   const [dossierDisposition, setDossierDisposition] = useState(2);
   const [minigameProgress, setMinigameProgress]     = useState(0);
 
@@ -147,8 +151,9 @@ export default function HostView() {
 
     socket.on('room:state_update',        d => { setCharacters(d.characters); setRoomState(d.roomState); });
     socket.on('room:gm_presence',         d => setGmOnline(d.gmOnline));
-    socket.on('room:minigame_warning',    d => { beep(); setWarningTarget(d.targetDeviceToken); setActiveType(d.minigameType); setActiveDifficulty(d.difficultyTier||null); setActiveModifier(d.modifier||null); setResult({show:false,success:false}); });
-    socket.on('room:minigame_started',    d => { setWarningTarget(null); setActiveTarget(d.targetDeviceToken); setActiveType(d.minigameType); setActiveDifficulty(d.difficultyTier||null); setActiveModifier(d.modifier||null); setMinigameProgress(0); setResult({show:false,success:false}); });
+    socket.on('room:minigame_warning',    d => { beep(); setWarningTarget(d.targetDeviceToken); setActiveType(d.minigameType); setActiveDifficulty(d.difficultyTier||null); setActiveModifier(d.modifier||null); setActivePosition(d.position||null); setActiveEffect(d.effect||null); setResult({show:false,success:false}); });
+    socket.on('room:minigame_started',    d => { setWarningTarget(null); setActiveTarget(d.targetDeviceToken); setActiveType(d.minigameType); setActiveDifficulty(d.difficultyTier||null); setActiveModifier(d.modifier||null); setActivePosition(d.position||null); setActiveEffect(d.effect||null); setMinigameProgress(0); setResult({show:false,success:false}); });
+    socket.on('room:clocks_update',       d => setClocks(d.clocks || []));
     socket.on('room:minigame_progress',   d => { if (d.progress) setMinigameProgress(d.progress); });
     socket.on('room:dossier_started',     d => { beep(); setWarningTarget(null); setActiveDossierTarget(d.targetDeviceToken); setDossierDisposition(d.disposition); setResult({show:false,success:false}); });
     socket.on('room:dossier_update',      d => setDossierDisposition(d.disposition));
@@ -178,7 +183,7 @@ export default function HostView() {
       ['room:state_update','room:gm_presence','room:minigame_warning','room:minigame_started',
        'room:minigame_progress','room:dossier_started','room:dossier_update','room:minigame_result',
        'room:flash_draw_prepare','room:flash_draw_go','room:flash_draw_results',
-       'room:flash_draw_complete','room:combat_queue_update'].forEach(e => socket.off(e));
+       'room:flash_draw_complete','room:combat_queue_update','room:clocks_update'].forEach(e => socket.off(e));
     };
   }, []);
 
@@ -248,6 +253,20 @@ export default function HostView() {
           <div className={`text-8xl font-black mb-8 tracking-[0.1em] ${warnDisplay.glow}`}>⚠️ {warnDisplay.label} ⚠️</div>
           <h3 className="text-5xl text-white mt-4 tracking-widest">TARGET LOCKED: <span className={`font-bold ${warnDisplay.color}`}>{warningChar.name}</span></h3>
           <div className={`mt-12 text-3xl font-mono tracking-[0.3em] animate-bounce ${warnDisplay.color.replace('500','300')}`}>{warnDisplay.sub}</div>
+          {(activePosition || activeEffect) && (
+            <div className="flex gap-4 mt-8">
+              {activePosition && (
+                <div className={`px-6 py-2 rounded-full border font-black uppercase tracking-widest text-xl ${activePosition==='controlled'?'border-green-500 bg-green-950/80 text-green-300':activePosition==='desperate'?'border-red-500 bg-red-950/80 text-red-300':'border-amber-500 bg-amber-950/80 text-amber-300'}`}>
+                  {activePosition.toUpperCase()}
+                </div>
+              )}
+              {activeEffect && (
+                <div className={`px-6 py-2 rounded-full border font-black uppercase tracking-widest text-xl ${activeEffect==='great'?'border-purple-500 bg-purple-950/80 text-purple-300':activeEffect==='limited'?'border-slate-500 bg-slate-800 text-slate-300':'border-cyan-500 bg-cyan-950/80 text-cyan-300'}`}>
+                  {activeEffect.toUpperCase()} EFFECT
+                </div>
+              )}
+            </div>
+          )}
           {activeModifier && (
             <div className={`mt-8 px-8 py-4 rounded-full border text-center backdrop-blur ${activeModifier.type==='time'?'bg-rose-950/90 border-rose-700 text-rose-100':activeModifier.type==='consequence'?'bg-orange-950/90 border-orange-700 text-orange-100':'bg-cyan-950/90 border-cyan-700 text-cyan-100'}`}>
               <div className="text-xs uppercase tracking-[0.35em] opacity-80">DIFFICULTY {activeDifficulty?.toUpperCase()||'STANDARD'}</div>
@@ -318,16 +337,26 @@ export default function HostView() {
       {/* Standard host UI */}
       {!activeTarget && !activeDossierTarget && !warningTarget && flashDrawState === 'idle' && (
         <>
-          {combatState && combatState.queue.length > 0 && (
-            <div className="absolute top-8 left-8 z-10 w-64 bg-slate-900/80 border border-slate-700 rounded-lg p-4 shadow-2xl backdrop-blur-sm">
-              <h3 className="text-red-500 font-bold mb-3 border-b border-red-900 pb-1 text-sm tracking-widest">INITIATIVE</h3>
-              <div className="space-y-2">
-                {combatState.queue.map((e, i) => (
-                  <div key={i} className={`p-2 rounded text-sm flex justify-between items-center transition-all ${i === combatState.activeIndex ? 'bg-red-600 text-white font-bold scale-105 border-l-4 border-white' : e.isEnemy ? 'text-red-400 opacity-80' : 'text-cyan-400 opacity-80'}`}>
-                    <span className="truncate pr-2">{i+1}. {e.name}</span>
+          {/* Top-left panel: clocks + initiative in one flex row so they never overlap */}
+          {(clocks.filter(c => c.visible).length > 0 || (combatState && combatState.queue.length > 0)) && (
+            <div className="absolute top-8 left-8 z-10 flex flex-row gap-4 items-start">
+              {clocks.filter(c => c.visible).length > 0 && (
+                <div className="flex flex-wrap gap-2" style={{ maxWidth: '300px' }}>
+                  {clocks.filter(c => c.visible).map(c => <ClockCard key={c.id} clock={c} />)}
+                </div>
+              )}
+              {combatState && combatState.queue.length > 0 && (
+                <div className="w-56 bg-slate-900/80 border border-slate-700 rounded-lg p-4 shadow-2xl backdrop-blur-sm">
+                  <h3 className="text-red-500 font-bold mb-3 border-b border-red-900 pb-1 text-sm tracking-widest">INITIATIVE</h3>
+                  <div className="space-y-2">
+                    {combatState.queue.map((e, i) => (
+                      <div key={i} className={`p-2 rounded text-sm flex justify-between items-center transition-all ${i === combatState.activeIndex ? 'bg-red-600 text-white font-bold scale-105 border-l-4 border-white' : e.isEnemy ? 'text-red-400 opacity-80' : 'text-cyan-400 opacity-80'}`}>
+                        <span className="truncate pr-2">{i+1}. {e.name}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           )}
           <div className={`transition-all duration-1000 z-10 ${isReady ? 'absolute top-8 right-8 scale-50 origin-top-right' : 'mb-8 border-b-4 pb-8 w-full max-w-4xl'} ${!isReady ? (roomState==='combat'?'border-red-500':roomState==='overdrive'?'border-fuchsia-500':'border-cyan-500') : ''}`}>

@@ -11,6 +11,7 @@ import Chain        from './Chain';
 import Scan         from './Scan';
 import Jam          from './Jam';
 import Surveillance from './Surveillance';
+import Doctor       from './Doctor';
 
 // Loose props type used for the registry lookup.
 // Each component's own Props interface is the authoritative contract.
@@ -32,10 +33,12 @@ export const MINIGAME_REGISTRY: Record<string, ComponentType<any>> = {
   scan:         Scan,
   jam:          Jam,
   surveillance: Surveillance,
+  doctor:       Doctor,
 };
 
 export { computeSetup } from './computeSetup';
-export type { MinigameSetup, MinigameType, DegreeOfSuccess, MinigameCompleteCallback, DifficultyModifier } from './types';
+export type { MinigameSetup, MinigameType, DegreeOfSuccess, MinigameCompleteCallback, DifficultyModifier, GlitchType } from './types';
+export { clampDegree, DEGREE_ORDER } from './types';
 
 // Display metadata used by HostView and GMView
 export const MINIGAME_META: Record<string, { label: string; stat: 'MEAT' | 'MIND' | 'MOXIE'; color: string; hostColor: string }> = {
@@ -49,4 +52,5 @@ export const MINIGAME_META: Record<string, { label: string; stat: 'MEAT' | 'MIND
   scan:         { label: 'SIGNAL SCAN',  stat: 'MIND',  color: 'bg-green-700 hover:bg-green-600', hostColor: 'text-green-500'  },
   jam:          { label: 'SIGNAL JAM',   stat: 'MIND',  color: 'bg-lime-700 hover:bg-lime-600',   hostColor: 'text-lime-500'   },
   surveillance: { label: 'GHOST',        stat: 'MOXIE', color: 'bg-teal-700 hover:bg-teal-600',   hostColor: 'text-teal-500'   },
+  doctor:       { label: 'FIELD MED',    stat: 'MIND',  color: 'bg-emerald-700 hover:bg-emerald-600', hostColor: 'text-emerald-400' },
 };

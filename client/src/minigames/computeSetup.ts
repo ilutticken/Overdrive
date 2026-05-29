@@ -1,12 +1,29 @@
-import type { MinigameSetup, MinigameType, DifficultyModifier } from './types';
+import type {
+  MinigameSetup, MinigameType, DifficultyModifier,
+  DegreeOfSuccess, DoctorStep,
+} from './types';
 
-// Character shape — transitional. When perks replace stats this interface
-// becomes Perk[] and only this file needs to change.
+// Character shape — transitional. When the skill system replaces stats,
+// this interface becomes { skills: Record<SkillName, number> } and only
+// this file needs to change.
 export interface CharacterStats {
   meat:  number;
   mind:  number;
   moxie: number;
 }
+
+// ─── Pip-level degree bounds ──────────────────────────────────────────────────
+// Stub: returns full range until the skill system supplies real pip ratings.
+// When skills land, pass the relevant pip count here and derive bounds from it.
+function degreeBounds(pipRating: number): { degreeCeiling: DegreeOfSuccess; degreeFloor: DegreeOfSuccess } {
+  return {
+    degreeCeiling: pipRating === 0 ? 'success'   : 'critical_success',
+    degreeFloor:   pipRating >= 3  ? 'failure'   : 'critical_failure',
+  };
+}
+
+// Placeholder until the skill system is wired: all characters treated as 1 pip.
+const DEFAULT_BOUNDS = degreeBounds(1);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -27,10 +44,27 @@ function randHex4(): string {
   return Math.random().toString(16).substr(2, 4).toUpperCase();
 }
 
+// ─── Doctor wound definitions ─────────────────────────────────────────────────
+
+const WOUND_STEPS: Record<'laceration' | 'fracture' | 'trauma', DoctorStep[]> = {
+  laceration: [
+    { type: 'pressure',  label: 'PACK WOUND'  },
+    { type: 'direction', label: 'DISINFECT',   direction: 'L' },
+    { type: 'align',     label: 'BANDAGE'     },
+  ],
+  fracture: [
+    { type: 'align',     label: 'ALIGN BONE'  },
+    { type: 'pressure',  label: 'BRACE'       },
+    { type: 'direction', label: 'SPLINT',      direction: 'U' },
+  ],
+  trauma: [
+    { type: 'align',     label: 'ASSESS'      },
+    { type: 'pressure',  label: 'STABILIZE'   },
+    { type: 'direction', label: 'ADMINISTER',  direction: 'D' },
+  ],
+};
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
-// Returns a fully typed, perk-ready setup object for a given mini-game.
-// All tuneable values are explicit named fields — nothing is hardcoded inside
-// the game components themselves.
 
 export function computeSetup(
   type: MinigameType,
@@ -38,8 +72,8 @@ export function computeSetup(
   modifier: DifficultyModifier | null,
   difficultyTier: string
 ): MinigameSetup {
-  const c = character ?? { meat: 1, mind: 1, moxie: 1 };
-  const base = { modifier, difficultyTier };
+  const c    = character ?? { meat: 1, mind: 1, moxie: 1 };
+  const base = { modifier, difficultyTier, ...DEFAULT_BOUNDS };
 
   switch (type) {
     case 'overload': {
@@ -51,7 +85,7 @@ export function computeSetup(
       const raw = statDuration(c.meat, 5000, 3500, 2000);
       return {
         type, ...base,
-        duration:      applyTimeMod(raw, modifier),
+        duration:       applyTimeMod(raw, modifier),
         criticalWindow: [37, 43],
         successWindow:  [34, 46],
         mixedWindow:    [30, 50],
@@ -120,6 +154,21 @@ export function computeSetup(
       const raw = statDuration(c.moxie, 5000, 4000, 3000);
       const center = 20 + Math.random() * 60;
       return { type, ...base, duration: applyTimeMod(raw, modifier), blindSpot: { center, width: 14 } };
+    }
+
+    case 'doctor': {
+      // stepDuration will be driven by Doctor pip rating when skill system lands.
+      const stepDuration = 3500;
+      const woundTypes = ['laceration', 'fracture', 'trauma'] as const;
+      const woundType  = woundTypes[Math.floor(Math.random() * woundTypes.length)];
+      const steps      = WOUND_STEPS[woundType];
+      return {
+        type, ...base,
+        duration: applyTimeMod(stepDuration * steps.length, modifier),
+        woundType,
+        steps,
+        stepDuration,
+      };
     }
   }
 }
