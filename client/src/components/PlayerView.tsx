@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { socket } from '../socket';
-import { MINIGAME_REGISTRY, computeSetup } from '../minigames';
-import type { MinigameSetup, DegreeOfSuccess, GlitchType } from '../minigames';
+import { MINIGAME_REGISTRY, computeSetup, SKILL_NAMES, ATTRIBUTE_GROUPS } from '../minigames';
+import type { MinigameSetup, DegreeOfSuccess, GlitchType, SkillName } from '../minigames';
 import GlitchLayer from './GlitchLayer';
 import ConsequencePicker, { type Position, type Effect } from './ConsequencePicker';
 import { HealthBar, StressBar } from './StatBars';
@@ -21,21 +21,18 @@ const WARNING_CONFIG: Record<string, { bg: string; border: string; color: string
   surveillance: { bg: 'bg-teal-950/90',   border: 'border-teal-600',   color: 'text-teal-500',   label: 'CAMERA ACTIVE',   sub: 'PREPARE TO GHOST'     },
 };
 
-// ─── Archetype / background data ─────────────────────────────────────────────
+// ─── Background data ──────────────────────────────────────────────────────────
 
-const ARCHETYPES: Record<string, { label: string; meat: number; mind: number; moxie: number; desc: string }> = {
-  'street-sam':   { label: 'The Street-Sam',  meat: 4, mind: 2, moxie: 1, desc: 'Meat focus. Excels at physical combat and parrying.' },
-  'cyber-glitch': { label: 'The Cyber-Glitch', mind: 4, meat: 1, moxie: 2, desc: 'Mind focus. Excels at hacking and system overloads.' },
-  'operator':     { label: 'The Operator',    moxie: 4, meat: 2, mind: 1, desc: 'Moxie focus. Excels at social bluffs and crew support.' },
-};
-
-const BACKGROUNDS = [
-  { id: 'street-fixer',    label: 'Street Fixer',     description: 'A veteran of the undercity who survives by reading people and adapting fast.' },
-  { id: 'corp-scion',      label: 'Corporate Scion',  description: 'Raised in boardrooms, this operative understands leverage, etiquette, and pressure.' },
-  { id: 'ghost-runner',    label: 'Ghost Runner',     description: 'A stealth-first operator built for silent movement, evasion, and quick exits.' },
-  { id: 'bio-hacker',      label: 'Bio-Hacker',       description: 'Tuned into body and machine limits, this operative thrives in risky augmentations.' },
-  { id: 'grizzled-veteran',label: 'Grizzled Veteran', description: 'Scarred by past wars and trusted under pressure when calm is thin.' },
-  { id: 'signal-weaver',   label: 'Signal Weaver',    description: 'A master of distractions, drones, and social noise that bends attention.' },
+const BACKGROUNDS: Array<{
+  id: string; label: string; description: string;
+  bonus: Partial<Record<SkillName, number>>;
+}> = [
+  { id: 'street-fixer',    label: 'Street Fixer',     description: 'A veteran of the undercity who survives by reading people and adapting fast.',                     bonus: { deceive: 2, sway: 1 } },
+  { id: 'tunnel-rat',      label: 'Tunnel Rat',        description: 'A survivor of maintenance ducts and forgotten routes. Moves unseen and hears everything.',          bonus: { skulk: 2, attune: 1 } },
+  { id: 'ghost-runner',    label: 'Ghost Runner',     description: 'A stealth-first operator built for silent movement, evasion, and quick exits.',                    bonus: { hustle: 2, rig: 1 } },
+  { id: 'bio-hacker',      label: 'Bio-Hacker',       description: 'Tuned into body and machine limits, this operative thrives in risky augmentations.',               bonus: { doctor: 2, study: 1 } },
+  { id: 'grizzled-veteran',label: 'Grizzled Veteran', description: 'Scarred by past wars and trusted under pressure when calm is thin.',                               bonus: { fight: 2, command: 1 } },
+  { id: 'signal-weaver',   label: 'Signal Weaver',    description: 'A master of distractions, drones, and social noise that bends attention.',                        bonus: { hack: 2, pilot: 1 } },
 ];
 
 function getDeviceToken() {
@@ -59,8 +56,8 @@ export default function PlayerView() {
   const [selectedProfileId, setSelectedProfileId] = useState<number|null>(null);
   const [showCreate, setShowCreate]     = useState(false);
   const [createName, setCreateName]     = useState('');
-  const [createArchetype, setCreateArchetype] = useState('street-sam');
-  const [createBackground, setCreateBackground] = useState(BACKGROUNDS[0].id);
+  const [createBackground, setCreateBackground] = useState('');
+  const [freePips, setFreePips]         = useState<Partial<Record<SkillName, number>>>({});
 
   // Active mini-game
   const [activeSetup, setActiveSetup]   = useState<MinigameSetup | null>(null);
@@ -186,9 +183,10 @@ export default function PlayerView() {
       setWarningType(null);
       setActivePosition((d.position as Position) || 'risky');
       setActiveEffect((d.effect as Effect) || 'standard');
+      const pipRating: number = character ? (character[`skill_${d.skillName}`] ?? 1) : 1;
       const setup = computeSetup(
         d.minigameType,
-        character ? { meat: character.meat, mind: character.mind, moxie: character.moxie } : null,
+        pipRating,
         d.modifier || null,
         d.difficultyTier || 'medium'
       );
@@ -276,28 +274,47 @@ export default function PlayerView() {
 
   const handleCreateProfile = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const stats = ARCHETYPES[createArchetype];
-    const bg = BACKGROUNDS.find(b => b.id === createBackground);
+    const bgObj = BACKGROUNDS.find(b => b.id === createBackground);
+    if (!bgObj) { alert('Choose a background first.'); return; }
+    const skillPayload: Record<string, number> = {};
+    for (const s of SKILL_NAMES) {
+      skillPayload[`skill_${s}`] = (bgObj.bonus[s] ?? 0) + (freePips[s] ?? 0);
+    }
     socket.emit('player:create_profile', {
       deviceToken: getDeviceToken(), name: createName || 'Unnamed',
-      meat: stats.meat, mind: stats.mind, moxie: stats.moxie,
-      background: bg?.label || '', health: 3, max_health: 3,
+      background: bgObj.label, health: 3, max_health: 3,
       credits: 0, gear: '[]', status_effects: '[]', notes: '',
       stress: 8, max_stress: 8,
+      ...skillPayload,
     }, (res: any) => {
-      if (res.success) { fetchProfiles(); setSelectedProfileId(res.id||null); setShowProfiles(true); setShowCreate(false); setName(res.profile.name||''); setCreateName(''); }
-      else alert(res.message || 'Failed to create profile');
+      if (res.success) {
+        fetchProfiles();
+        setSelectedProfileId(res.id || null);
+        setShowProfiles(true);
+        setShowCreate(false);
+        setName(res.profile.name || '');
+        setCreateName('');
+        setCreateBackground('');
+        setFreePips({});
+      } else alert(res.message || 'Failed to create profile');
     });
   };
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     const token = getDeviceToken();
-    const stats = ARCHETYPES[createArchetype];
-    const bg = BACKGROUNDS.find(b => b.id === createBackground);
-    const payload: any = { roomCode, deviceToken: token, background: bg?.label || '' };
-    if (selectedProfileId) payload.profileId = selectedProfileId;
-    else { payload.name = name; payload.stats = { meat: stats.meat, mind: stats.mind, moxie: stats.moxie }; }
+    const bgObj = BACKGROUNDS.find(b => b.id === createBackground);
+    const payload: any = { roomCode, deviceToken: token, background: bgObj?.label || '' };
+    if (selectedProfileId) {
+      payload.profileId = selectedProfileId;
+    } else {
+      const skillPayload: Record<string, number> = {};
+      for (const s of SKILL_NAMES) {
+        skillPayload[`skill_${s}`] = (bgObj?.bonus[s] ?? 0) + (freePips[s] ?? 0);
+      }
+      payload.name = name;
+      payload.skills = skillPayload;
+    }
     socket.emit('player:join_room', payload, (res: any) => {
       if (res.success) {
         setJoined(true);
@@ -329,41 +346,96 @@ export default function PlayerView() {
               </button>
             </div>
 
-            {showCreate && (
-              <div className="mt-4 mb-4 p-4 bg-slate-900 rounded border">
-                <h3 className="font-bold mb-2">Create New Character</h3>
-                <div className="space-y-3">
-                  <input value={createName} onChange={e=>setCreateName(e.target.value)} placeholder="Character Name" className="w-full p-2 bg-slate-800 rounded" />
-                  <div className="grid grid-cols-1 gap-2">
-                    {Object.entries(ARCHETYPES).map(([key, data]) => (
-                      <label key={key} className={`p-2 rounded border cursor-pointer transition-all ${createArchetype===key?'border-fuchsia-500 bg-fuchsia-500/10':'border-slate-700 bg-slate-900 hover:border-slate-500'}`}>
-                        <input type="radio" name="archetype" value={key} checked={createArchetype===key} onChange={()=>setCreateArchetype(key)} className="hidden" />
-                        <div className="font-bold text-fuchsia-300">{data.label}</div>
-                        <div className="text-xs text-slate-400 mt-1">{data.desc}</div>
-                        <div className="flex gap-2 mt-2 text-[10px] font-mono">
-                          <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MEAT:{data.meat}</span>
-                          <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MIND:{data.mind}</span>
-                          <span className="bg-slate-800 px-1 py-0.5 rounded text-white">MOXIE:{data.moxie}</span>
+            {showCreate && (() => {
+              const bgObj = BACKGROUNDS.find(b => b.id === createBackground);
+              const freeAllocated = (Object.values(freePips) as number[]).reduce((s, v) => s + v, 0);
+              const freeRemaining = 4 - freeAllocated;
+              const canCreate = !!createName && !!createBackground && freeRemaining === 0;
+              return (
+                <div className="mt-4 mb-4 p-4 bg-slate-900 rounded border border-slate-700 space-y-4">
+                  <h3 className="font-bold text-fuchsia-300">Create New Character</h3>
+
+                  {/* Name */}
+                  <input value={createName} onChange={e=>setCreateName(e.target.value)} placeholder="Character Name" className="w-full p-2 bg-slate-800 rounded border border-slate-600 text-white" />
+
+                  {/* Step 1: Background */}
+                  <div>
+                    <div className="text-xs font-bold text-amber-400 uppercase tracking-widest mb-2">Step 1 — Choose Background</div>
+                    {BACKGROUNDS.map(bg => {
+                      const bonusSkills = Object.entries(bg.bonus) as [SkillName, number][];
+                      return (
+                        <label key={bg.id} className={`block p-2 rounded border cursor-pointer transition-all mb-1 ${createBackground===bg.id?'border-amber-500 bg-amber-500/10':'border-slate-700 bg-slate-900 hover:border-slate-500'}`}>
+                          <input type="radio" name="background" value={bg.id} checked={createBackground===bg.id}
+                            onChange={() => { setCreateBackground(bg.id); setFreePips({}); }} className="hidden" />
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-amber-300">{bg.label}</span>
+                            <span className="text-[10px] font-mono text-amber-200/70">
+                              {bonusSkills.map(([s, n]) => `+${n} ${s.toUpperCase()}`).join(' · ')}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">{bg.description}</div>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {/* Step 2: Pip allocation (only after background chosen) */}
+                  {bgObj && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs font-bold text-cyan-400 uppercase tracking-widest">Step 2 — Distribute 4 Pips</div>
+                        <span className={`text-xs font-bold ${freeRemaining===0?'text-emerald-400':'text-amber-300'}`}>
+                          {freeRemaining > 0 ? `${freeRemaining} remaining` : 'All pips placed ✓'}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mb-3">Max 2 pips per skill at creation. Background pips count toward the cap.</div>
+                      {ATTRIBUTE_GROUPS.map(group => (
+                        <div key={group.label} className="mb-3">
+                          <div className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${group.color}`}>{group.label}</div>
+                          {group.skills.map(skill => {
+                            const bgPips    = bgObj.bonus[skill] ?? 0;
+                            const free      = freePips[skill] ?? 0;
+                            const total     = bgPips + free;
+                            const canAdd    = freeRemaining > 0 && total < 2;
+                            const canRemove = free > 0;
+                            return (
+                              <div key={skill} className="flex items-center justify-between py-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-slate-300 uppercase w-16">{skill}</span>
+                                  <div className="flex gap-0.5">
+                                    {[0,1,2].map(i => (
+                                      <div key={i} className={`w-3 h-3 rounded-sm ${i < total ? 'bg-fuchsia-500' : 'bg-slate-700'}`} />
+                                    ))}
+                                  </div>
+                                  {bgPips > 0 && <span className="text-[9px] text-amber-400/70">(+{bgPips} bg)</span>}
+                                </div>
+                                <div className="flex gap-1">
+                                  <button type="button"
+                                    onClick={() => setFreePips(p => ({ ...p, [skill]: Math.max(0, (p[skill]??0)-1) }))}
+                                    disabled={!canRemove}
+                                    className="w-5 h-5 text-xs rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed">−</button>
+                                  <button type="button"
+                                    onClick={() => setFreePips(p => ({ ...p, [skill]: (p[skill]??0)+1 }))}
+                                    disabled={!canAdd}
+                                    className="w-5 h-5 text-xs rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed">+</button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="mt-3 border-t border-slate-700 pt-3">
-                    <div className="text-sm font-bold text-fuchsia-300 mb-2">Choose a Background</div>
-                    {BACKGROUNDS.map(bg => (
-                      <label key={bg.id} className={`p-2 rounded border cursor-pointer transition-all block mb-1 ${createBackground===bg.id?'border-amber-500 bg-amber-500/10':'border-slate-700 bg-slate-900 hover:border-slate-500'}`}>
-                        <input type="radio" name="background" value={bg.id} checked={createBackground===bg.id} onChange={()=>setCreateBackground(bg.id)} className="hidden" />
-                        <div className="font-bold text-amber-300">{bg.label}</div>
-                        <div className="text-xs text-slate-400 mt-1">{bg.description}</div>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="text-right mt-3">
-                    <button type="button" onClick={handleCreateProfile} className="px-4 py-2 bg-fuchsia-600 rounded text-white">Create</button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="text-right pt-1">
+                    <button type="button" onClick={handleCreateProfile} disabled={!canCreate}
+                      className="px-4 py-2 bg-fuchsia-600 rounded text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                      Create
+                    </button>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {showProfiles && (
               <div className="mb-2 p-3 bg-slate-900 rounded border">
@@ -372,8 +444,7 @@ export default function PlayerView() {
                   <div key={p.id} className={`flex items-center justify-between p-2 rounded hover:bg-slate-800 ${selectedProfileId===p.id?'ring-2 ring-fuchsia-500':''}`}>
                     <div>
                       <div className="font-bold">{p.name||'Unnamed'}</div>
-                      <div className="text-xs text-slate-400">MEAT:{p.meat} MIND:{p.mind} MOXIE:{p.moxie}</div>
-                      <div className="text-xs text-amber-300 mt-1">BACKGROUND: {p.background||'Unassigned'}</div>
+                      <div className="text-xs text-amber-300 mt-0.5">{p.background||'No background'}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <input type="radio" name="profile" checked={selectedProfileId===p.id} onChange={()=>{ setSelectedProfileId(p.id); setName(p.name||''); }} />
@@ -534,11 +605,18 @@ export default function PlayerView() {
             <StressBar stress={character?.stress ?? 8} maxStress={character?.max_stress ?? 8} />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-xs text-center">
-          {(['MEAT','MIND','MOXIE'] as const).map(s => (
-            <div key={s} className="bg-slate-900 p-2 rounded border border-slate-700">
-              <div className="text-slate-400">{s}</div>
-              <div className="font-bold text-lg text-white">{character?.[s.toLowerCase()]}</div>
+        <div className="grid grid-cols-3 gap-1.5 text-xs">
+          {ATTRIBUTE_GROUPS.map(group => (
+            <div key={group.label} className="bg-slate-900 rounded border border-slate-700 p-1.5">
+              <div className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 text-center ${group.color}`}>{group.label}</div>
+              {group.skills.map(skill => (
+                <div key={skill} className="flex justify-between items-center py-0.5">
+                  <span className="text-[10px] text-slate-400 uppercase">{skill.slice(0,3)}</span>
+                  <span className={`text-[11px] font-bold ${(character?.[`skill_${skill}`]??1)===0?'text-slate-600':(character?.[`skill_${skill}`]??1)>=2?'text-fuchsia-300':'text-white'}`}>
+                    {character?.[`skill_${skill}`] ?? 1}
+                  </span>
+                </div>
+              ))}
             </div>
           ))}
         </div>

@@ -3,7 +3,7 @@ import { socket } from '../socket';
 import CityBackground from './CityBackground';
 import HostMinigameDisplay from './HostMinigameDisplay';
 import { ClockCard, type Clock } from './ClockDisplay';
-import { MINIGAME_META } from '../minigames';
+import { MINIGAME_META, ATTRIBUTE_GROUPS } from '../minigames';
 import { HealthBar, StressBar } from './StatBars';
 
 // ─── Result label/tone maps ───────────────────────────────────────────────────
@@ -388,8 +388,20 @@ export default function HostView() {
                           <StressBar stress={c.stress ?? 8} maxStress={c.max_stress ?? 8} />
                         </div>
                       </div>
-                      <div className="text-xs text-slate-400 mt-1">฿: {c.credits}</div>
-                      <div className="text-xs text-amber-300 mt-1">BACKGROUND: {c.background||'Unassigned'}</div>
+                      <div className="text-xs text-slate-400 mt-1">฿: {c.credits} · {c.background||'—'}</div>
+                      <div className="grid grid-cols-3 gap-1 mt-2">
+                        {ATTRIBUTE_GROUPS.map(group => (
+                          <div key={group.label} className="bg-slate-900/60 rounded p-1">
+                            <div className={`text-[8px] font-bold uppercase tracking-widest text-center mb-0.5 ${group.color}`}>{group.label.slice(0,3)}</div>
+                            {group.skills.map(skill => (
+                              <div key={skill} className="flex justify-between">
+                                <span className="text-[9px] text-slate-500 uppercase">{skill.slice(0,3)}</span>
+                                <span className={`text-[9px] font-bold ${(c[`skill_${skill}`]??1)>=2?'text-fuchsia-300':'text-slate-300'}`}>{c[`skill_${skill}`]??1}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   );
                 })}

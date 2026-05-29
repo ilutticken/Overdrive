@@ -3,35 +3,23 @@ import type {
   DegreeOfSuccess, DoctorStep,
 } from './types';
 
-// Character shape — transitional. When the skill system replaces stats,
-// this interface becomes { skills: Record<SkillName, number> } and only
-// this file needs to change.
-export interface CharacterStats {
-  meat:  number;
-  mind:  number;
-  moxie: number;
+// ─── Pip-based timer and degree bounds ───────────────────────────────────────
+
+function pipDuration(base: number, pips: number): number {
+  if (pips <= 0) return Math.floor(base * 0.75);   // complication: −25%
+  if (pips === 1) return base;                       // baseline
+  if (pips === 2) return Math.floor(base * 1.25);   // advantage: +25%
+  return Math.floor(base * 1.5);                    // 2 advantages: +50%
 }
 
-// ─── Pip-level degree bounds ──────────────────────────────────────────────────
-// Stub: returns full range until the skill system supplies real pip ratings.
-// When skills land, pass the relevant pip count here and derive bounds from it.
-function degreeBounds(pipRating: number): { degreeCeiling: DegreeOfSuccess; degreeFloor: DegreeOfSuccess } {
+function degreeBounds(pips: number): { degreeCeiling: DegreeOfSuccess; degreeFloor: DegreeOfSuccess } {
   return {
-    degreeCeiling: pipRating === 0 ? 'success'   : 'critical_success',
-    degreeFloor:   pipRating >= 3  ? 'failure'   : 'critical_failure',
+    degreeCeiling: pips === 0 ? 'success'  : 'critical_success'  as DegreeOfSuccess,
+    degreeFloor:   pips >= 3  ? 'failure'  : 'critical_failure'  as DegreeOfSuccess,
   };
 }
 
-// Placeholder until the skill system is wired: all characters treated as 1 pip.
-const DEFAULT_BOUNDS = degreeBounds(1);
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function statDuration(stat: number, high: number, mid: number, low: number): number {
-  if (stat >= 4) return high;
-  if (stat >= 2) return mid;
-  return low;
-}
 
 function applyTimeMod(duration: number, modifier: DifficultyModifier | null): number {
   if (modifier?.type === 'time' && typeof modifier.durationMultiplier === 'number') {
@@ -68,21 +56,21 @@ const WOUND_STEPS: Record<'laceration' | 'fracture' | 'trauma', DoctorStep[]> = 
 
 export function computeSetup(
   type: MinigameType,
-  character: CharacterStats | null,
+  pipRating: number,
   modifier: DifficultyModifier | null,
   difficultyTier: string
 ): MinigameSetup {
-  const c    = character ?? { meat: 1, mind: 1, moxie: 1 };
-  const base = { modifier, difficultyTier, ...DEFAULT_BOUNDS };
+  const pips = Math.max(0, Math.min(3, pipRating ?? 1));
+  const base  = { modifier, difficultyTier, ...degreeBounds(pips) };
 
   switch (type) {
     case 'overload': {
-      const raw = statDuration(c.mind, 5500, 4000, 3000);
+      const raw = pipDuration(4000, pips);
       return { type, ...base, duration: applyTimeMod(raw, modifier), targetTaps: 15 };
     }
 
     case 'deflect': {
-      const raw = statDuration(c.meat, 5000, 3500, 2000);
+      const raw = pipDuration(3500, pips);
       return {
         type, ...base,
         duration:       applyTimeMod(raw, modifier),
@@ -99,11 +87,11 @@ export function computeSetup(
       const criticalWindow = Math.max(4,  Math.min(16,  7 * mul));
       const half = successWindow / 2;
       const targetCenter = Math.max(half, Math.min(100 - half, Math.random() * (100 - successWindow) + half));
-      return { type, ...base, duration: applyTimeMod(3000, modifier), targetCenter, successWindow, criticalWindow };
+      return { type, ...base, duration: applyTimeMod(pipDuration(3000, pips), modifier), targetCenter, successWindow, criticalWindow };
     }
 
     case 'slash': {
-      const raw = statDuration(c.meat, 5000, 4000, 3000);
+      const raw = pipDuration(4000, pips);
       return {
         type, ...base,
         duration:    applyTimeMod(raw, modifier),
@@ -113,7 +101,7 @@ export function computeSetup(
     }
 
     case 'thread': {
-      const raw = statDuration(c.meat, 5000, 4500, 4000);
+      const raw = pipDuration(4500, pips);
       const gates = Array.from({ length: 4 }, () => ({
         side: (Math.random() < 0.5 ? 'L' : 'R') as 'L' | 'R',
       }));
@@ -121,12 +109,11 @@ export function computeSetup(
     }
 
     case 'lock': {
-      const raw = c.meat >= 4 ? 5000 : 4000;
-      return { type, ...base, duration: applyTimeMod(raw, modifier), hitRadius: 12 };
+      return { type, ...base, duration: applyTimeMod(pipDuration(4000, pips), modifier), hitRadius: 12 };
     }
 
     case 'chain': {
-      const raw = statDuration(c.meat, 6000, 5000, 4000);
+      const raw = pipDuration(5000, pips);
       const sequence = Array.from({ length: 8 }, () =>
         (Math.random() < 0.5 ? 'L' : 'R')
       ) as Array<'L' | 'R'>;
@@ -134,7 +121,7 @@ export function computeSetup(
     }
 
     case 'scan': {
-      const raw = statDuration(c.mind, 6000, 5000, 4000);
+      const raw = pipDuration(5000, pips);
       const target = randHex4();
       const codes: string[] = [target];
       while (codes.length < 8) {
@@ -146,19 +133,17 @@ export function computeSetup(
     }
 
     case 'jam': {
-      const raw = c.mind >= 4 ? 5000 : 4000;
-      return { type, ...base, duration: applyTimeMod(raw, modifier), hitZoneWidth: 8 };
+      return { type, ...base, duration: applyTimeMod(pipDuration(4000, pips), modifier), hitZoneWidth: 8 };
     }
 
     case 'surveillance': {
-      const raw = statDuration(c.moxie, 5000, 4000, 3000);
+      const raw = pipDuration(4000, pips);
       const center = 20 + Math.random() * 60;
       return { type, ...base, duration: applyTimeMod(raw, modifier), blindSpot: { center, width: 14 } };
     }
 
     case 'doctor': {
-      // stepDuration will be driven by Doctor pip rating when skill system lands.
-      const stepDuration = 3500;
+      const stepDuration = pipDuration(3500, pips);
       const woundTypes = ['laceration', 'fracture', 'trauma'] as const;
       const woundType  = woundTypes[Math.floor(Math.random() * woundTypes.length)];
       const steps      = WOUND_STEPS[woundType];

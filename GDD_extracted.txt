@@ -2,63 +2,57 @@ OVERDRIVE: Game Design Document (Phase 1)
 Product Concept: An asymmetric local multiplayer, rules-lite cyberpunk tabletop RPG where narrative actions are resolved through frantic, 3-to-5-second smartphone micro-games. The experience combines the collaborative storytelling of a human Game Master (GM) with the party-game energy of WarioWare and the seamless accessibility of Jackbox systems.
 Target Platforms: Dual-screen architecture consisting of a centralized TV/Monitor host application (the public screen) and specialized smartphone web-app interfaces for individual players (the personal Cyber-Decks) and the GM (the Master Control Deck).
 1. Rules-Lite RPG Core Engine
-1.1 Core Attributes
-Traditional roleplaying math, mathematical modifiers, and polyhedral dice pools are eliminated to maintain a breakneck party pace. Characters are defined by three distinct attributes rated on a scale from 1 (Amateur) to 5 (Legendary):
-Meat: Governs physical power, brawling, vehicle handling, acrobatics, and twitch physical reflexes.
-Mind: Governs network hacking, hardware engineering, electronic warfare, tactical observation, and medical analysis.
-Moxie: Governs social manipulation, fast-talking, intimidation, performance, deception, and psychological grit.
-1.2 Skill vs. Stat Intersection
-A player's physical reflexes determine actual in-game success, but the character's stats alter the physical parameters, timing windows, and constraints of the micro-games delivered to their smartphone:
-Stat Rating
-Difficulty Tier
-Micro-Game UI Modification
- 
-1
-Amateur (Hard Mode)
-Strict 3-second timer, tightest collision hitboxes, maximal obstacle layout.
-2-3
-Professional (Standard)
-Standard 4-second timer, baseline success hitboxes.
-4
-Elite
-Time Dilator active: Grants +1.5 additional seconds to complete the objective.
-5
-Legendary
-Buffer Tech active: The first structural mistake or missed tap is automatically forgiven.
-1.3 Health and Status Degradation
-System Integrity: Characters maintain 3 Core Blocks of health. Failing a micro-game during dangerous or hostile encounters shatters 1 block. Reaching 0 blocks puts the character into an unconscious state.
+1.1 Skills & Pips
+Traditional attribute scores and polyhedral dice pools are eliminated to maintain a breakneck party pace. Characters are defined by twelve Skills organized under three Attributes. The Attribute grouping matters for Stress resistance (see §5), but Skills are rolled individually.
+
+INSIGHT          TOUGHNESS        RESOLVE
+─────────        ─────────────    ───────
+Doctor           Fight            Attune
+Hack             Hustle           Command
+Rig              Pilot            Deceive
+Study            Skulk            Sway
+
+Each Skill has a Pip rating of 0–3. Pips represent practiced ability — not raw talent, but repeated exposure and deliberate training.
+
+1.2 Character Creation
+Step 1 — Choose a Background. Your Background grants +2 Pips to one Skill and +1 Pip to another.
+
+Step 2 — Distribute 4 Pips freely. These are additive with your Background Pips. No Skill may exceed 2 Pips at creation.
+
+The 2-Pip cap applies only at creation. Advancement (§10) can raise Skills to 3.
+
+1.3 What Pips Do at the Table
+Pip rating determines the Complication/Advantage modifier applied to mini-games (see §3). Pips do not directly determine success — the mini-game does. Pips shape the conditions of the attempt.
+
+Pips    Modifier
+0       +1 Complication drawn
+1       No modifier (baseline)
+2       +1 Advantage drawn
+3       +2 Advantages drawn
+
+When Advantages are granted, draw from the following list. The same Advantage may be stacked (except Advantage 6, which may only be stacked twice):
+
+1. Increase the timer by 25%.
+2. The "Target" is Easier — things in the game have larger success ranges, move more slowly, etc. (specifics vary by mini-game).
+3. On a Critical Success, the game immediately restarts at 50% of the original time. Success in this extra game grants +1 Benefit; a Critical Success grants +2. Lesser results are ignored.
+4. On a Mixed Success or greater, the Effect is automatically upgraded.
+5. The player is given 1 free retry on a Critical Fail or Fail input.
+6. Critical Fail is upgraded to Fail, or Fail is upgraded to Mixed Success. This Advantage is only available when a player spends Stress to Assist; Assisting players must also select a Consequence if one is triggered.
+
+1.4 Health and Status Degradation
+Health: Characters maintain 3 Core Blocks of health. Failing a micro-game during dangerous or hostile encounters shatters 1 block. Reaching 0 blocks puts the character into an unconscious state.
 Screen Glitches: Status effects manifest as real physical handicaps rendered on the player's smartphone screen. Taking damage or failing certain network maneuvers injects persistent handicaps such as visual static/flicker, inverted touch directions, or deliberate input registration delays into subsequent micro-games.
 2. Action-to-Minigame Mapping
-Narrative declarations made by the player are parsed by the GM and executed through rapid micro-game paradigms:
-Narrative Action Class
-Stat
-Screen Command
-UI & Mechanics Protocol
- 
-ICE Breaking / Node Hack
-Mind
-ROUTE!
-Node Breach: Trace a continuous unbroken path from a starting node to a terminal node on a grid without hitting firewall barriers.
-Encryption Bypass
-Mind
-ISOLATE!
-Encryption Scan: A large hex sequence header is displayed. The player must scan a flashing 3x3 array of codes and tap the exact match.
-Vehicular Chase / Evasion
-Meat
-THREAD!
-Getaway: Top-down running vector view. Blast shields and obstructions slide shut vertically. Swipe rapidly left and right to navigate through the gaps.
-Overload / Counter-Measure
-Mind
-SPAM!
-Overload: Pure speed test. Button-mash a giant red terminal icon a target number of times (e.g., 15 taps in 3 seconds) to crash an asset.
-Melee Defensive Parry
-Meat
-DEFLECT!
-The Block: Concentric neon vector arcs close inwards on a player silhouette. Tap the screen precisely when the arc interfaces with the green zone.
-Social Bluff / Resolution
-Moxie
-INTERRUPT!
-Sonic Intercept: An active audio waveform scrolls across the display. The user must tap exactly inside brief physical gaps in the waveform to fit their line in.
+Narrative declarations made by the player are parsed by the GM and executed through rapid micro-game paradigms. The relevant Skill is selected by the GM based on the narrative approach; the player's Pip rating in that Skill determines the Complication/Advantage modifier applied.
+
+Narrative Action Class    Skill             Screen Command    UI & Mechanics Protocol
+
+ICE Breaking / Node Hack  Hack (INSIGHT)    ROUTE!            Node Breach: Trace a continuous unbroken path from a starting node to a terminal node on a grid without hitting firewall barriers.
+Encryption Bypass         Study (INSIGHT)   ISOLATE!          Encryption Scan: A large hex sequence header is displayed. The player must scan a flashing 3x3 array of codes and tap the exact match.
+Vehicular Chase / Evasion Pilot (TOUGHNESS) THREAD!           Getaway: Top-down running vector view. Blast shields and obstructions slide shut vertically. Swipe rapidly left and right to navigate through the gaps.
+Overload / Counter-Measure Rig (INSIGHT)    SPAM!             Overload: Pure speed test. Button-mash a giant red terminal icon a target number of times (e.g., 15 taps in 3 seconds) to crash an asset.
+Melee Defensive Parry     Fight (TOUGHNESS) DEFLECT!          The Block: Concentric neon vector arcs close inwards on a player silhouette. Tap the screen precisely when the arc interfaces with the green zone.
+Social Bluff / Resolution Deceive (RESOLVE) INTERRUPT!        Sonic Intercept: An active audio waveform scrolls across the display. The user must tap exactly inside brief physical gaps in the waveform to fit their line in.
 3. Combat Loop & Tactical Systems
 3.1 Interactive Weapon Profiles
 Weapons determine the precise tactile style of the smartphone screen input, transforming different equipment into unique mechanical sensory loops:
@@ -98,10 +92,11 @@ The Haptic Motor (Blind Vault Crack): Used for pitch-black hotwiring or lockpick
 Multi-Touch (Pressure Leverage): Used for structural lifting, forcing jammed pneumatic hatches, or precise medical sutures. Requires simultaneous twin-finger anchoring and steady mechanical sliding against an onscreen resistance bar.
 5. Progression & Session Structures
 5.1 Classless Archetype Templates
-Character creation is classless, offering immediate modular loadout templates to streamline deployment for new players:
-The Street-Sam (Meat Focus): Meat 4, Mind 2, Moxie 1. Equipped with Subdermal Shock-Gloves (duplicates tap metrics inside Unarmed Combo strings) and Bodyguard Protocol software (allows the character to link and intercept failure damage for adjacent allies).
-The Cyber-Glitch (Mind Focus): Meat 1, Mind 4, Moxie 2. Equipped with a Signal Booster antenna (+1.5 seconds on all Hacking actions) and Deep-Scan Ping software (automatically surfaces one hidden NPC psychological flaw on their phone during Dossier Hacks).
-The Operator (Moxie Focus): Meat 2, Mind 1, Moxie 4. Equipped with an Audio-Synthesizer Implant (widens target success regions by 25% during Sonic Intercepts) and Rallying Cry software (once per challenge, purges a screen-obscuring "Glitch" from a squad mate's phone).
+Character creation is classless, offering immediate modular loadout templates to streamline deployment for new players. Each template suggests a Background and a recommended Pip distribution, but players may deviate freely.
+
+The Street-Sam (TOUGHNESS Focus): Specializes in Fight, Pilot, and Hustle. Suggested Background: Ex-Military (+2 Fight, +1 Hustle). Equipped with Subdermal Shock-Gloves (duplicates tap metrics inside Unarmed Combo strings) and Bodyguard Protocol software (allows the character to link and intercept failure damage for adjacent allies).
+The Cyber-Glitch (INSIGHT Focus): Specializes in Hack, Rig, and Study. Suggested Background: Corporate Deserter (+2 Hack, +1 Rig). Equipped with a Signal Booster antenna (+1 Advantage on all Hack actions) and Deep-Scan Ping software (automatically surfaces one hidden NPC psychological flaw on their phone during Dossier Hacks).
+The Operator (RESOLVE Focus): Specializes in Deceive, Sway, and Command. Suggested Background: Fixer (+2 Sway, +1 Deceive). Equipped with an Audio-Synthesizer Implant (widens target success regions by 25% during Sonic Intercepts) and Rallying Cry software (once per challenge, purges a screen-obscuring "Glitch" from a squad mate's phone).
 5.2 Session Resolution & Post-Game Economy
 Upon contract completion, the GM distributes Credits (฿) and Data-Shards. The public TV screen transitions into the Black Net Market interface. Players spend their credits directly from their devices to purchase high-tier hardware upgrades and specialized software modifications, installing new UI behavior configurations, success parameters, or ability behaviors onto their classless profile for subsequent missions.
 6. System Pacing Dynamics

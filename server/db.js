@@ -120,6 +120,14 @@ const initSchema = () => {
   try {
     db.exec(`ALTER TABLE players ADD COLUMN auto_lose_stress_on_fail INTEGER DEFAULT 0;`);
   } catch (err) {}
+
+  // Skills (12 individual pip ratings under INSIGHT / TOUGHNESS / RESOLVE)
+  const SKILL_NAMES = ['doctor','hack','rig','study','fight','hustle','pilot','skulk','attune','command','deceive','sway'];
+  for (const skill of SKILL_NAMES) {
+    for (const table of ['players', 'characters', 'character_profiles']) {
+      try { db.exec(`ALTER TABLE ${table} ADD COLUMN skill_${skill} INTEGER DEFAULT 1;`); } catch (e) {}
+    }
+  }
 };
 
 initSchema();

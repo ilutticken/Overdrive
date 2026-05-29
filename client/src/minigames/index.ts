@@ -14,7 +14,6 @@ import Surveillance from './Surveillance';
 import Doctor       from './Doctor';
 
 // Loose props type used for the registry lookup.
-// Each component's own Props interface is the authoritative contract.
 export type MinigameComponentProps = {
   setup: MinigameSetup;
   onComplete: MinigameCompleteCallback;
@@ -40,17 +39,34 @@ export { computeSetup } from './computeSetup';
 export type { MinigameSetup, MinigameType, DegreeOfSuccess, MinigameCompleteCallback, DifficultyModifier, GlitchType } from './types';
 export { clampDegree, DEGREE_ORDER } from './types';
 
-// Display metadata used by HostView and GMView
-export const MINIGAME_META: Record<string, { label: string; stat: 'MEAT' | 'MIND' | 'MOXIE'; color: string; hostColor: string }> = {
-  overload:     { label: 'OVERLOAD',     stat: 'MIND',  color: 'bg-red-600 hover:bg-red-500',     hostColor: 'text-red-500'    },
-  deflect:      { label: 'DEFLECT',      stat: 'MEAT',  color: 'bg-blue-600 hover:bg-blue-500',   hostColor: 'text-blue-500'   },
-  bluff:        { label: 'BLUFF',        stat: 'MOXIE', color: 'bg-amber-600 hover:bg-amber-500', hostColor: 'text-amber-500'  },
-  slash:        { label: 'SLASH',        stat: 'MEAT',  color: 'bg-rose-700 hover:bg-rose-600',   hostColor: 'text-rose-500'   },
-  thread:       { label: 'THREAD',       stat: 'MEAT',  color: 'bg-orange-700 hover:bg-orange-600', hostColor: 'text-orange-500' },
-  lock:         { label: 'LOCK ON',      stat: 'MEAT',  color: 'bg-violet-700 hover:bg-violet-600', hostColor: 'text-violet-500' },
-  chain:        { label: 'CHAIN',        stat: 'MEAT',  color: 'bg-cyan-700 hover:bg-cyan-600',   hostColor: 'text-cyan-500'   },
-  scan:         { label: 'SIGNAL SCAN',  stat: 'MIND',  color: 'bg-green-700 hover:bg-green-600', hostColor: 'text-green-500'  },
-  jam:          { label: 'SIGNAL JAM',   stat: 'MIND',  color: 'bg-lime-700 hover:bg-lime-600',   hostColor: 'text-lime-500'   },
-  surveillance: { label: 'GHOST',        stat: 'MOXIE', color: 'bg-teal-700 hover:bg-teal-600',   hostColor: 'text-teal-500'   },
-  doctor:       { label: 'FIELD MED',    stat: 'MIND',  color: 'bg-emerald-700 hover:bg-emerald-600', hostColor: 'text-emerald-400' },
+// ─── Skill system ─────────────────────────────────────────────────────────────
+
+export const SKILL_NAMES = [
+  'doctor','hack','rig','study',
+  'fight','hustle','pilot','skulk',
+  'attune','command','deceive','sway',
+] as const;
+
+export type SkillName = typeof SKILL_NAMES[number];
+
+export const ATTRIBUTE_GROUPS: Array<{ label: string; color: string; skills: SkillName[] }> = [
+  { label: 'INSIGHT',   color: 'text-cyan-400',    skills: ['doctor','hack','rig','study'] },
+  { label: 'TOUGHNESS', color: 'text-red-400',      skills: ['fight','hustle','pilot','skulk'] },
+  { label: 'RESOLVE',   color: 'text-emerald-400',  skills: ['attune','command','deceive','sway'] },
+];
+
+// ─── Display metadata ─────────────────────────────────────────────────────────
+
+export const MINIGAME_META: Record<string, { label: string; skill: SkillName; color: string; hostColor: string }> = {
+  overload:     { label: 'OVERLOAD',     skill: 'rig',         color: 'bg-red-600 hover:bg-red-500',           hostColor: 'text-red-500'    },
+  deflect:      { label: 'DEFLECT',      skill: 'fight',       color: 'bg-blue-600 hover:bg-blue-500',         hostColor: 'text-blue-500'   },
+  bluff:        { label: 'BLUFF',        skill: 'deceive',     color: 'bg-amber-600 hover:bg-amber-500',       hostColor: 'text-amber-500'  },
+  slash:        { label: 'SLASH',        skill: 'fight',       color: 'bg-rose-700 hover:bg-rose-600',         hostColor: 'text-rose-500'   },
+  thread:       { label: 'THREAD',       skill: 'pilot',       color: 'bg-orange-700 hover:bg-orange-600',     hostColor: 'text-orange-500' },
+  lock:         { label: 'LOCK ON',      skill: 'skulk',       color: 'bg-violet-700 hover:bg-violet-600',     hostColor: 'text-violet-500' },
+  chain:        { label: 'CHAIN',        skill: 'fight',       color: 'bg-cyan-700 hover:bg-cyan-600',         hostColor: 'text-cyan-500'   },
+  scan:         { label: 'SIGNAL SCAN',  skill: 'study',       color: 'bg-green-700 hover:bg-green-600',       hostColor: 'text-green-500'  },
+  jam:          { label: 'SIGNAL JAM',   skill: 'hack',        color: 'bg-lime-700 hover:bg-lime-600',         hostColor: 'text-lime-500'   },
+  surveillance: { label: 'GHOST',        skill: 'skulk',       color: 'bg-teal-700 hover:bg-teal-600',         hostColor: 'text-teal-500'   },
+  doctor:       { label: 'FIELD MED',    skill: 'doctor',      color: 'bg-emerald-700 hover:bg-emerald-600',   hostColor: 'text-emerald-400' },
 };

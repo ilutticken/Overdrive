@@ -26,6 +26,25 @@ const generateRoomCode = () => {
   return code;
 };
 
+// Skills
+const SKILL_NAMES = ['doctor','hack','rig','study','fight','hustle','pilot','skulk','attune','command','deceive','sway'];
+
+const MINIGAME_DEFAULT_SKILL = {
+  overload:'rig', deflect:'fight', bluff:'deceive', slash:'fight',
+  thread:'pilot', lock:'skulk', chain:'fight', scan:'study',
+  jam:'hack', surveillance:'skulk', doctor:'doctor',
+};
+
+function pickSkills(primary, fallback = {}) {
+  const result = {};
+  for (const s of SKILL_NAMES) {
+    const key = `skill_${s}`;
+    const val = primary?.[key];
+    result[key] = (val !== undefined && val !== null) ? val : (fallback[key] ?? 1);
+  }
+  return result;
+}
+
 // Socket tracking for presence and disconnects
 const socketMap = new Map();
 
@@ -36,22 +55,29 @@ const insertRoomStmt = db.prepare('INSERT INTO rooms (room_code) VALUES (?)');
 const getCharactersStmt = db.prepare('SELECT * FROM characters WHERE room_code = ?');
 const updateCharacterPresenceStmt = db.prepare('UPDATE characters SET is_online = ? WHERE room_code = ? AND device_token = ?');
 const upsertCharacterStmt = db.prepare(`
-  INSERT INTO characters (room_code, device_token, name, meat, mind, moxie, background, is_online) 
-  VALUES (@room_code, @device_token, @name, @meat, @mind, @moxie, @background, 1)
-  ON CONFLICT(room_code, device_token) DO UPDATE SET 
+  INSERT INTO characters (room_code, device_token, name, meat, mind, moxie, background, is_online,
+    skill_doctor, skill_hack, skill_rig, skill_study, skill_fight, skill_hustle, skill_pilot, skill_skulk, skill_attune, skill_command, skill_deceive, skill_sway)
+  VALUES (@room_code, @device_token, @name, @meat, @mind, @moxie, @background, 1,
+    @skill_doctor, @skill_hack, @skill_rig, @skill_study, @skill_fight, @skill_hustle, @skill_pilot, @skill_skulk, @skill_attune, @skill_command, @skill_deceive, @skill_sway)
+  ON CONFLICT(room_code, device_token) DO UPDATE SET
     name = excluded.name,
     meat = excluded.meat,
     mind = excluded.mind,
     moxie = excluded.moxie,
     background = excluded.background,
-    is_online = 1
+    is_online = 1,
+    skill_doctor = excluded.skill_doctor, skill_hack = excluded.skill_hack, skill_rig = excluded.skill_rig, skill_study = excluded.skill_study,
+    skill_fight = excluded.skill_fight, skill_hustle = excluded.skill_hustle, skill_pilot = excluded.skill_pilot, skill_skulk = excluded.skill_skulk,
+    skill_attune = excluded.skill_attune, skill_command = excluded.skill_command, skill_deceive = excluded.skill_deceive, skill_sway = excluded.skill_sway
 `);
 
 // Player (persistent) prepared statements
 const getPlayerStmt = db.prepare('SELECT * FROM players WHERE device_token = ?');
 const upsertPlayerStmt = db.prepare(`
-  INSERT INTO players (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes, stress, max_stress)
-  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes, @stress, @max_stress)
+  INSERT INTO players (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes, stress, max_stress,
+    skill_doctor, skill_hack, skill_rig, skill_study, skill_fight, skill_hustle, skill_pilot, skill_skulk, skill_attune, skill_command, skill_deceive, skill_sway)
+  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes, @stress, @max_stress,
+    @skill_doctor, @skill_hack, @skill_rig, @skill_study, @skill_fight, @skill_hustle, @skill_pilot, @skill_skulk, @skill_attune, @skill_command, @skill_deceive, @skill_sway)
   ON CONFLICT(device_token) DO UPDATE SET
     name = excluded.name,
     meat = excluded.meat,
@@ -66,16 +92,25 @@ const upsertPlayerStmt = db.prepare(`
     notes = excluded.notes,
     stress = excluded.stress,
     max_stress = excluded.max_stress,
+    skill_doctor = excluded.skill_doctor, skill_hack = excluded.skill_hack, skill_rig = excluded.skill_rig, skill_study = excluded.skill_study,
+    skill_fight = excluded.skill_fight, skill_hustle = excluded.skill_hustle, skill_pilot = excluded.skill_pilot, skill_skulk = excluded.skill_skulk,
+    skill_attune = excluded.skill_attune, skill_command = excluded.skill_command, skill_deceive = excluded.skill_deceive, skill_sway = excluded.skill_sway,
     updated_at = CURRENT_TIMESTAMP
 `);
 const updatePlayerStmt = db.prepare(`
-  UPDATE players SET name = @name, meat = @meat, mind = @mind, moxie = @moxie, background = @background, health = @health, max_health = @max_health, credits = @credits, gear = @gear, status_effects = @status_effects, notes = @notes, stress = @stress, max_stress = @max_stress, updated_at = CURRENT_TIMESTAMP WHERE device_token = @device_token
+  UPDATE players SET name = @name, meat = @meat, mind = @mind, moxie = @moxie, background = @background, health = @health, max_health = @max_health, credits = @credits, gear = @gear, status_effects = @status_effects, notes = @notes, stress = @stress, max_stress = @max_stress,
+    skill_doctor = @skill_doctor, skill_hack = @skill_hack, skill_rig = @skill_rig, skill_study = @skill_study,
+    skill_fight = @skill_fight, skill_hustle = @skill_hustle, skill_pilot = @skill_pilot, skill_skulk = @skill_skulk,
+    skill_attune = @skill_attune, skill_command = @skill_command, skill_deceive = @skill_deceive, skill_sway = @skill_sway,
+    updated_at = CURRENT_TIMESTAMP WHERE device_token = @device_token
 `);
 const getProfilesStmt = db.prepare('SELECT * FROM character_profiles WHERE device_token = ? ORDER BY last_used DESC, created_at DESC');
 const getProfileByIdStmt = db.prepare('SELECT * FROM character_profiles WHERE id = ?');
 const insertProfileStmt = db.prepare(`
-  INSERT INTO character_profiles (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes, stress, max_stress, last_used)
-  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes, @stress, @max_stress, @last_used)
+  INSERT INTO character_profiles (device_token, name, meat, mind, moxie, background, health, max_health, credits, gear, status_effects, notes, stress, max_stress, last_used,
+    skill_doctor, skill_hack, skill_rig, skill_study, skill_fight, skill_hustle, skill_pilot, skill_skulk, skill_attune, skill_command, skill_deceive, skill_sway)
+  VALUES (@device_token, @name, @meat, @mind, @moxie, @background, @health, @max_health, @credits, @gear, @status_effects, @notes, @stress, @max_stress, @last_used,
+    @skill_doctor, @skill_hack, @skill_rig, @skill_study, @skill_fight, @skill_hustle, @skill_pilot, @skill_skulk, @skill_attune, @skill_command, @skill_deceive, @skill_sway)
 `);
 const updateProfileLastUsedStmt = db.prepare('UPDATE character_profiles SET last_used = ? WHERE id = ?');
 const deleteProfileStmt = db.prepare('DELETE FROM character_profiles WHERE id = ? AND device_token = ?');
@@ -95,6 +130,7 @@ const mergeCharacterRecord = (characterRecord) => {
     auto_lose_stress_on_fail: p.auto_lose_stress_on_fail ?? 0,
     stress: (p.stress !== undefined && p.stress !== null) ? p.stress : (characterRecord.stress ?? 8),
     max_stress: (p.max_stress !== undefined && p.max_stress !== null) ? p.max_stress : (characterRecord.max_stress ?? 8),
+    ...pickSkills(p, characterRecord),
   };
 };
 
@@ -188,6 +224,7 @@ io.on('connection', (socket) => {
   socket.on('player:join_room', (data, callback) => {
     const { roomCode, deviceToken, name, stats, isReconnect, profileId, background } = data || {};
     const { meat = 1, mind = 1, moxie = 1 } = stats || {};
+    const incomingSkills = data?.skills || {};
 
     // Allow joining by selecting an existing profile (profileId) or supplying a name
     if (!roomCode || !deviceToken || (!name && !isReconnect && !profileId)) {
@@ -211,9 +248,9 @@ io.on('connection', (socket) => {
           profile = {
             device_token: deviceToken,
             name: saved.name,
-            meat: saved.meat,
-            mind: saved.mind,
-            moxie: saved.moxie,
+            meat: 1,
+            mind: 1,
+            moxie: 1,
             background: saved.background || background || '',
             health: saved.health,
             max_health: saved.max_health,
@@ -223,6 +260,7 @@ io.on('connection', (socket) => {
             notes: saved.notes,
             stress: saved.stress ?? 8,
             max_stress: saved.max_stress ?? 8,
+            ...pickSkills(saved),
           };
           // mark profile last_used
           try { updateProfileLastUsedStmt.run(new Date().toISOString(), saved.id); } catch (e) {}
@@ -235,18 +273,19 @@ io.on('connection', (socket) => {
         profile = {
           device_token: deviceToken,
           name: name || (existingPlayer && existingPlayer.name) || null,
-          meat: (stats && stats.meat) || (existingPlayer && existingPlayer.meat) || meat,
-          mind: (stats && stats.mind) || (existingPlayer && existingPlayer.mind) || mind,
-          moxie: (stats && stats.moxie) || (existingPlayer && existingPlayer.moxie) || moxie,
+          meat: 1,
+          mind: 1,
+          moxie: 1,
           background: background || (existingPlayer && existingPlayer.background) || '',
-          health: (stats && (stats.health ?? undefined)) || (existingPlayer && existingPlayer.health) || 3,
-          max_health: (stats && (stats.max_health ?? undefined)) || (existingPlayer && existingPlayer.max_health) || 3,
-          credits: (stats && (stats.credits ?? undefined)) || (existingPlayer && existingPlayer.credits) || 0,
+          health: (existingPlayer && existingPlayer.health) || 3,
+          max_health: (existingPlayer && existingPlayer.max_health) || 3,
+          credits: (existingPlayer && existingPlayer.credits) || 0,
           gear: (existingPlayer && existingPlayer.gear) || '[]',
           status_effects: (existingPlayer && existingPlayer.status_effects) || '[]',
           notes: (existingPlayer && existingPlayer.notes) || '',
           stress: (existingPlayer && existingPlayer.stress !== undefined && existingPlayer.stress !== null) ? existingPlayer.stress : 8,
           max_stress: (existingPlayer && existingPlayer.max_stress) || 8,
+          ...pickSkills(incomingSkills, existingPlayer || {}),
         };
       }
 
@@ -257,15 +296,16 @@ io.on('connection', (socket) => {
         // Just mark as online if reconnecting silently in the room
         updateCharacterPresenceStmt.run(1, uppercaseRoomCode, deviceToken);
       } else {
-        // Upsert new or updated character in room, including health/credits/gear fields where supported
+        // Upsert new or updated character in room
         upsertCharacterStmt.run({
           room_code: uppercaseRoomCode,
           device_token: deviceToken,
           name: profile.name,
-          meat: profile.meat,
-          mind: profile.mind,
-          moxie: profile.moxie,
-          background: profile.background || ''
+          meat: 1,
+          mind: 1,
+          moxie: 1,
+          background: profile.background || '',
+          ...pickSkills(profile),
         });
       }
 
@@ -302,13 +342,12 @@ io.on('connection', (socket) => {
     try {
       const existing = getPlayerStmt.get(deviceToken);
       if (!existing) {
-        // Create new player with provided fields
         upsertPlayerStmt.run({
           device_token: deviceToken,
           name: data.name || null,
-          meat: data.meat || 1,
-          mind: data.mind || 1,
-          moxie: data.moxie || 1,
+          meat: 1,
+          mind: 1,
+          moxie: 1,
           background: data.background || '',
           health: data.health || 3,
           max_health: data.max_health || 3,
@@ -318,15 +357,15 @@ io.on('connection', (socket) => {
           notes: data.notes || '',
           stress: data.stress ?? 8,
           max_stress: data.max_stress ?? 8,
+          ...pickSkills(data),
         });
       } else {
-        // Update existing
         updatePlayerStmt.run({
           device_token: deviceToken,
           name: data.name ?? existing.name,
-          meat: data.meat ?? existing.meat,
-          mind: data.mind ?? existing.mind,
-          moxie: data.moxie ?? existing.moxie,
+          meat: 1,
+          mind: 1,
+          moxie: 1,
           background: data.background ?? existing.background,
           health: data.health ?? existing.health,
           max_health: data.max_health ?? existing.max_health,
@@ -336,6 +375,7 @@ io.on('connection', (socket) => {
           notes: data.notes ?? existing.notes,
           stress: data.stress ?? existing.stress ?? 8,
           max_stress: data.max_stress ?? existing.max_stress ?? 8,
+          ...pickSkills(data, existing),
         });
       }
 
@@ -374,15 +414,15 @@ io.on('connection', (socket) => {
 
   // Create a new persistent character profile for this device
   socket.on('player:create_profile', (data, callback) => {
-    const { deviceToken, name, meat = 1, mind = 1, moxie = 1, background = '', health = 3, max_health = 3, credits = 0, gear = '[]', status_effects = '[]', notes = '', stress = 8, max_stress = 8 } = data || {};
+    const { deviceToken, name, background = '', health = 3, max_health = 3, credits = 0, gear = '[]', status_effects = '[]', notes = '', stress = 8, max_stress = 8 } = data || {};
     if (!deviceToken) return callback?.({ success: false, message: 'Missing deviceToken' });
     try {
       const info = insertProfileStmt.run({
         device_token: deviceToken,
         name,
-        meat,
-        mind,
-        moxie,
+        meat: 1,
+        mind: 1,
+        moxie: 1,
         background,
         health,
         max_health,
@@ -392,7 +432,8 @@ io.on('connection', (socket) => {
         notes,
         stress,
         max_stress,
-        last_used: new Date().toISOString()
+        last_used: new Date().toISOString(),
+        ...pickSkills(data),
       });
 
       const id = info.lastInsertRowid;
@@ -539,7 +580,8 @@ io.on('connection', (socket) => {
 
   // 5. Minigame Flow
   socket.on('gm:start_minigame', (data, callback) => {
-    const { roomCode, targetDeviceToken, minigameType, difficultyTier, position, effect } = data || {};
+    const { roomCode, targetDeviceToken, minigameType, difficultyTier, position, effect, skillName } = data || {};
+    const resolvedSkillName = skillName || MINIGAME_DEFAULT_SKILL[minigameType] || 'fight';
     if (!roomCode || !targetDeviceToken) {
       if (callback) callback({ success: false, message: 'Missing parameters' });
       return;
@@ -580,6 +622,7 @@ io.on('connection', (socket) => {
       modifier,
       position: resolvedPosition,
       effect:   resolvedEffect,
+      skillName: resolvedSkillName,
     });
 
     // 1. Emit warning immediately
@@ -590,6 +633,7 @@ io.on('connection', (socket) => {
       modifier,
       position: resolvedPosition,
       effect:   resolvedEffect,
+      skillName: resolvedSkillName,
     });
 
     // 2. Wait 2.5 seconds, then emit actual start
@@ -601,6 +645,7 @@ io.on('connection', (socket) => {
         modifier,
         position: resolvedPosition,
         effect:   resolvedEffect,
+        skillName: resolvedSkillName,
       });
     }, 2500);
 

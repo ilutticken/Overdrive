@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { socket } from '../socket';
-import { MINIGAME_META } from '../minigames';
+import { MINIGAME_META, ATTRIBUTE_GROUPS } from '../minigames';
 import { ClockGMCard, type Clock } from './ClockDisplay';
 import type { GlitchType } from '../minigames/types';
 import { HealthBar, StressBar } from './StatBars';
@@ -398,12 +398,19 @@ export default function GMView() {
                 <StressBar stress={c.stress ?? 8} maxStress={c.max_stress ?? 8} />
               </div>
 
-              {/* MEAT / MIND / MOXIE */}
-              <div className="grid grid-cols-3 gap-1 text-xs text-center mb-3">
-                {(['MEAT','MIND','MOXIE'] as const).map(stat => (
-                  <div key={stat} className="bg-slate-900 p-1.5 rounded">
-                    <div className="text-slate-400 text-[10px]">{stat}</div>
-                    <div className="font-bold text-base">{c[stat.toLowerCase()]}</div>
+              {/* Skills by attribute */}
+              <div className="grid grid-cols-3 gap-1 text-xs mb-3">
+                {ATTRIBUTE_GROUPS.map(group => (
+                  <div key={group.label} className="bg-slate-900 rounded p-1">
+                    <div className={`text-[8px] font-bold uppercase tracking-widest text-center mb-1 ${group.color}`}>{group.label.slice(0,3)}</div>
+                    {group.skills.map(skill => (
+                      <div key={skill} className="flex justify-between items-center">
+                        <span className="text-[9px] text-slate-400 uppercase">{skill.slice(0,3)}</span>
+                        <span className={`text-[10px] font-bold ${(c[`skill_${skill}`]??1)===0?'text-slate-600':(c[`skill_${skill}`]??1)>=2?'text-fuchsia-300':'text-white'}`}>
+                          {c[`skill_${skill}`] ?? 1}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
