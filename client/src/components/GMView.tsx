@@ -88,6 +88,7 @@ export default function GMView() {
         { name: char?.name || 'Unknown', choices: d.choices, degree: d.degreeOfSuccess },
         ...prev,
       ].slice(0, 5));
+      if (d.clockAdvanceError) showError('Threat clock advance failed — no auto-advance clocks available.');
     });
     return () => {
       ['room:state_update','room:flash_draw_prepare','room:flash_draw_go','room:flash_draw_results',
@@ -155,6 +156,10 @@ export default function GMView() {
   const advanceClock = (id: number, amount = 1) => socket.emit('gm:advance_clock', { roomCode, clockId: id, amount });
   const removeClock  = (id: number)             => socket.emit('gm:remove_clock',  { roomCode, clockId: id });
   const toggleClock  = (id: number)             => socket.emit('gm:toggle_clock_visibility', { roomCode, clockId: id });
+
+  const setClockAutoAdvance = (id: number, enabled: boolean) => {
+    socket.emit('gm:set_clock_auto_advance', { roomCode, clockId: id, enabled });
+  };
 
   const overrideConsequence = (deviceToken: string) => {
     socket.emit('gm:override_consequence', { roomCode, deviceToken });
@@ -324,6 +329,7 @@ export default function GMView() {
               onReduce={id  => advanceClock(id, -1)}
               onRemove={removeClock}
               onToggle={toggleClock}
+              onToggleAutoAdvance={setClockAutoAdvance}
             />
           ))}
         </div>

@@ -82,6 +82,9 @@ export default function PlayerView() {
   // Dossier (non-target view)
   const [dossierClues, setDossierClues] = useState<string[]>([]);
 
+  // Auto-advance clocks availability (for hiding clock_advance consequence option)
+  const [autoAdvanceClocksAvailable, setAutoAdvanceClocksAvailable] = useState(false);
+
   // Dossier (target view) — handled by the existing Dossier inline UI
   const [activeDossier, setActiveDossier] = useState(false);
   const [dossierDisposition, setDossierDisposition] = useState(2);
@@ -198,6 +201,9 @@ export default function PlayerView() {
       setActiveDossier(false);
       setDossierClues([]);
       setWarningType(null);
+      if (typeof d.autoAdvanceClocksAvailable === 'boolean') {
+        setAutoAdvanceClocksAvailable(d.autoAdvanceClocksAvailable);
+      }
       // Show consequence picker for the target player
       if (d.deviceToken === getDeviceToken()) {
         setPendingConsequence({
@@ -205,6 +211,12 @@ export default function PlayerView() {
           position: (d.position as Position) || activePosition,
           effect:   (d.effect as Effect)     || activeEffect,
         });
+      }
+    });
+
+    socket.on('room:clocks_update', (d: any) => {
+      if (typeof d.autoAdvanceClocksAvailable === 'boolean') {
+        setAutoAdvanceClocksAvailable(d.autoAdvanceClocksAvailable);
       }
     });
 
@@ -251,7 +263,8 @@ export default function PlayerView() {
       ['room:state_update','room:minigame_warning','room:minigame_started','room:minigame_result',
        'room:flash_draw_prepare','room:flash_draw_go','room:flash_draw_complete',
        'room:dossier_started','room:dossier_update',
-       'room:glitch_applied','room:glitches_cleared','room:consequence_override'].forEach(e => socket.off(e));
+       'room:glitch_applied','room:glitches_cleared','room:consequence_override',
+       'room:clocks_update'].forEach(e => socket.off(e));
     };
   }, [joined, character]);
 
@@ -480,6 +493,7 @@ export default function PlayerView() {
         degree={pendingConsequence.degree}
         position={pendingConsequence.position}
         effect={pendingConsequence.effect}
+        autoAdvanceClocksAvailable={autoAdvanceClocksAvailable}
         onSubmit={handleConsequenceSubmit}
       />
     );

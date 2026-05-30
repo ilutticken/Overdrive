@@ -10,10 +10,9 @@ export interface ConsequenceOption {
   id:          string;
   label:       string;
   description: string;
-  // Minimum position severity for this option to appear.
-  // 'controlled' = always available; 'desperate' = only on desperate.
-  minPosition: Position;
-  mechanical:  boolean; // true = auto-applied by server on submission
+  minPosition: Position; // must be at least this severe to appear
+  maxPosition?: Position; // must be no more severe than this to appear
+  mechanical:  boolean;  // true = auto-applied by server on submission
 }
 
 export interface BonusOption {
@@ -23,10 +22,10 @@ export interface BonusOption {
 }
 
 const CONSEQUENCES: ConsequenceOption[] = [
-  { id: 'stress_1',        label: 'Take 1 Stress',             description: 'Mark 1 stress on your track.',           minPosition: 'controlled', mechanical: false },
+  { id: 'stress_1',        label: 'Take 1 Stress',             description: 'Mark 1 stress on your track.',           minPosition: 'controlled', maxPosition: 'controlled', mechanical: true  },
   { id: 'reduced_effect',  label: 'Reduced Effect',            description: 'Your Effect drops one step.',            minPosition: 'controlled', mechanical: false },
   { id: 'adversary_acts',  label: 'Adversary Acts',            description: 'A random adversary takes a free action.',minPosition: 'controlled', mechanical: false },
-  { id: 'stress_2',        label: 'Take 2 Stress',             description: 'Mark 2 stress on your track.',           minPosition: 'risky',      mechanical: false },
+  { id: 'stress_2',        label: 'Take 2 Stress',             description: 'Mark 2 stress on your track.',           minPosition: 'risky',      mechanical: true  },
   { id: 'clock_advance',   label: 'Advance Threat Clock',      description: 'A danger clock fills 1–2 segments.',     minPosition: 'risky',      mechanical: false },
   { id: 'lose_gear',       label: 'Lose Gear Access',          description: 'One piece of gear is unavailable this scene.', minPosition: 'risky', mechanical: false },
   { id: 'health_1',        label: 'Take 1 Health',             description: 'Mark 1 health damage.',                  minPosition: 'desperate',  mechanical: true  },
@@ -46,7 +45,10 @@ const POSITION_ORDER: Record<Position, number> = { controlled: 0, risky: 1, desp
 
 function optionsForPosition(position: Position): ConsequenceOption[] {
   const threshold = POSITION_ORDER[position];
-  return CONSEQUENCES.filter(c => POSITION_ORDER[c.minPosition] <= threshold);
+  return CONSEQUENCES.filter(c =>
+    POSITION_ORDER[c.minPosition] <= threshold &&
+    (c.maxPosition === undefined || POSITION_ORDER[c.maxPosition] >= threshold)
+  );
 }
 
 // ─── Choose-count by outcome ──────────────────────────────────────────────────
@@ -56,17 +58,18 @@ function chooseCount(degree: DegreeOfSuccess): { type: 'consequence' | 'bonus' |
     case 'critical_success': return { type: 'bonus',       count: 1 };
     case 'success':          return { type: 'none',        count: 0 };
     case 'mixed_success':    return { type: 'consequence', count: 1 };
-    case 'failure':          return { type: 'consequence', count: 2 };
-    case 'critical_failure': return { type: 'consequence', count: 3 };
+    case 'failure':          return { type: 'consequence', count: 1 };
+    case 'critical_failure': return { type: 'consequence', count: 2 };
   }
 }
 
 // ─── Outcome display config ───────────────────────────────────────────────────
 
-const OUTCOME_CONFIG: Record<DegreeOfSuccess, { label: string; color: string; glow: string }> = {
+const OUTCOME_CONFIG: Record<DegreeOfSuccess, { label: string; color: string; glow: string; subtext?: string }> = {
   critical_success: { label: 'CRITICAL SUCCESS', color: 'text-purple-400',  glow: 'shadow-[0_0_30px_rgba(192,132,252,0.6)]' },
   success:          { label: 'SUCCESS',          color: 'text-emerald-400', glow: 'shadow-[0_0_30px_rgba(52,211,153,0.6)]'  },
-  mixed_success:    { label: 'MIXED SUCCESS',    color: 'text-amber-400',   glow: 'shadow-[0_0_30px_rgba(251,191,36,0.6)]'  },
+  mixed_success:    { label: 'MIXED SUCCESS',    color: 'text-amber-400',   glow: 'shadow-[0_0_30px_rgba(251,191,36,0.6)]',
+                      subtext: 'You get what you want — but at a cost.' },
   failure:          { label: 'FAILURE',          color: 'text-red-400',     glow: 'shadow-[0_0_30px_rgba(248,113,113,0.6)]' },
   critical_failure: { label: 'CRITICAL FAILURE', color: 'text-rose-500',    glow: 'shadow-[0_0_30px_rgba(244,63,94,0.6)]'   },
 };
@@ -74,18 +77,22 @@ const OUTCOME_CONFIG: Record<DegreeOfSuccess, { label: string; color: string; gl
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
-  degree:   DegreeOfSuccess;
-  position: Position;
-  effect:   Effect;
-  onSubmit: (choices: string[]) => void;
+  degree:                      DegreeOfSuccess;
+  position:                    Position;
+  effect:                      Effect;
+  autoAdvanceClocksAvailable?: boolean;
+  onSubmit:                    (choices: string[]) => void;
 }
 
-export default function ConsequencePicker({ degree, position, effect, onSubmit }: Props) {
+export default function ConsequencePicker({ degree, position, effect, autoAdvanceClocksAvailable, onSubmit }: Props) {
   const { type, count } = chooseCount(degree);
   const [selected, setSelected] = useState<string[]>([]);
   const outcomeConf = OUTCOME_CONFIG[degree];
 
-  const options   = type === 'consequence' ? optionsForPosition(position) : BONUSES;
+  const baseOptions = type === 'consequence' ? optionsForPosition(position) : BONUSES;
+  const options = type === 'consequence'
+    ? baseOptions.filter(o => o.id !== 'clock_advance' || autoAdvanceClocksAvailable === true)
+    : baseOptions;
   const canSubmit = type === 'none' || selected.length === count;
 
   const toggle = (id: string) => {
@@ -123,6 +130,11 @@ export default function ConsequencePicker({ degree, position, effect, onSubmit }
       <div className={`text-4xl font-black tracking-widest text-center mb-1 ${outcomeConf.color}`}>
         {outcomeConf.label}
       </div>
+      {outcomeConf.subtext && (
+        <div className={`text-center text-base font-semibold mb-2 ${outcomeConf.color} opacity-80`}>
+          {outcomeConf.subtext}
+        </div>
+      )}
       <div className="text-center text-slate-500 text-sm uppercase tracking-widest mb-6">
         {position.toUpperCase()} POSITION · {effect.toUpperCase()} EFFECT
       </div>

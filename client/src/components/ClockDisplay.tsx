@@ -1,12 +1,13 @@
 import React from 'react';
 
 export interface Clock {
-  id:       number;
-  name:     string;
-  type:     'threat' | 'project' | 'scene';
-  segments: number;
-  filled:   number;
-  visible:  boolean;
+  id:           number;
+  name:         string;
+  type:         'threat' | 'project' | 'scene';
+  segments:     number;
+  filled:       number;
+  visible:      boolean;
+  autoAdvance?: boolean;
 }
 
 // ─── SVG clock face ───────────────────────────────────────────────────────────
@@ -86,14 +87,15 @@ export function ClockCard({ clock }: { clock: Clock }) {
 // ─── GM control row ───────────────────────────────────────────────────────────
 
 interface GMCardProps {
-  clock:     Clock;
-  onAdvance: (id: number) => void;
-  onReduce:  (id: number) => void;
-  onRemove:  (id: number) => void;
-  onToggle:  (id: number) => void;
+  clock:               Clock;
+  onAdvance:           (id: number) => void;
+  onReduce:            (id: number) => void;
+  onRemove:            (id: number) => void;
+  onToggle:            (id: number) => void;
+  onToggleAutoAdvance: (id: number, enabled: boolean) => void;
 }
 
-export function ClockGMCard({ clock, onAdvance, onReduce, onRemove, onToggle }: GMCardProps) {
+export function ClockGMCard({ clock, onAdvance, onReduce, onRemove, onToggle, onToggleAutoAdvance }: GMCardProps) {
   const isComplete = clock.filled >= clock.segments;
   const color      = TYPE_COLOR[clock.type];
 
@@ -106,6 +108,17 @@ export function ClockGMCard({ clock, onAdvance, onReduce, onRemove, onToggle }: 
           {clock.type} · {clock.filled}/{clock.segments}
           {isComplete && <span className="ml-2 text-white font-black">COMPLETE</span>}
         </div>
+        {clock.type === 'threat' && (
+          <label className="flex items-center gap-1 mt-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!clock.autoAdvance}
+              onChange={e => onToggleAutoAdvance(clock.id, e.target.checked)}
+              className="w-3 h-3"
+            />
+            <span className="text-[9px] uppercase text-red-400 tracking-widest">auto-advance</span>
+          </label>
+        )}
       </div>
       <div className="flex gap-1">
         <button onClick={() => onReduce(clock.id)}  className="w-7 h-7 rounded bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold">−</button>

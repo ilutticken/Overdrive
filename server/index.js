@@ -677,6 +677,7 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const _clocks = activeClocks.get(uppercaseRoomCode) || [];
     io.to(uppercaseRoomCode).emit('room:minigame_result', {
       deviceToken,
       success,
@@ -684,6 +685,7 @@ io.on('connection', (socket) => {
       modifier:      activeMinigame.modifier,
       difficultyTier:activeMinigame.difficultyTier,
       position:      activeMinigame.position  || 'risky',
+      autoAdvanceClocksAvailable: _clocks.some(c => c.autoAdvance && c.filled < c.segments),
       effect:        activeMinigame.effect    || 'standard',
     });
 
@@ -901,7 +903,8 @@ io.on('connection', (socket) => {
 
   const broadcastClocks = (roomCode) => {
     const clocks = activeClocks.get(roomCode) || [];
-    io.to(roomCode).emit('room:clocks_update', { clocks });
+    const autoAdvanceClocksAvailable = clocks.some(c => c.autoAdvance && c.filled < c.segments);
+    io.to(roomCode).emit('room:clocks_update', { clocks, autoAdvanceClocksAvailable });
   };
 
   socket.on('gm:create_clock', (data, callback) => {
@@ -910,7 +913,7 @@ io.on('connection', (socket) => {
     const code = roomCode.toUpperCase();
     if (!activeClocks.has(code)) activeClocks.set(code, []);
     const clocks = activeClocks.get(code);
-    clocks.push({ id: clockIdCounter++, name, type: type || 'threat', segments: segments || 6, filled: 0, visible: visible !== false });
+    clocks.push({ id: clockIdCounter++, name, type: type || 'threat', segments: segments || 6, filled: 0, visible: visible !== false, autoAdvance: false });
     broadcastClocks(code);
     if (callback) callback({ success: true });
   });
@@ -948,6 +951,17 @@ io.on('connection', (socket) => {
     if (callback) callback({ success: true });
   });
 
+  socket.on('gm:set_clock_auto_advance', (data, callback) => {
+    const { roomCode, clockId, enabled } = data || {};
+    if (!roomCode || !clockId) return callback?.({ success: false });
+    const code = roomCode.toUpperCase();
+    const clock = (activeClocks.get(code) || []).find(c => c.id === clockId);
+    if (!clock) return callback?.({ success: false });
+    clock.autoAdvance = !!enabled;
+    broadcastClocks(code);
+    if (callback) callback({ success: true });
+  });
+
   socket.on('gm:apply_glitch', (data, callback) => {
     const { roomCode, deviceToken, glitch } = data || {};
     if (!roomCode || !deviceToken || !glitch) return callback?.({ success: false });
@@ -969,8 +983,31 @@ io.on('connection', (socket) => {
     if (!roomCode || !deviceToken) return;
     const code = roomCode.toUpperCase();
 
-    // Auto-apply health damage consequences
+    // Auto-apply mechanical consequences
+    let clockAdvanceError = false;
     choices?.forEach(choice => {
+      if (choice === 'clock_advance') {
+        const clocks = activeClocks.get(code) || [];
+        const eligible = clocks.filter(c => c.autoAdvance && c.filled < c.segments);
+        if (eligible.length > 0) {
+          const pick = eligible[Math.floor(Math.random() * eligible.length)];
+          pick.filled = Math.min(pick.segments, pick.filled + 1);
+          broadcastClocks(code);
+        } else {
+          clockAdvanceError = true;
+        }
+      }
+      if (choice === 'stress_1' || choice === 'stress_2') {
+        try {
+          const amount = choice === 'stress_2' ? 2 : 1;
+          const player = getPlayerStmt.get(deviceToken);
+          if (player) {
+            const newStress = Math.max(0, (player.stress ?? 8) - amount);
+            updatePlayerStressStmt.run(newStress, deviceToken);
+            updateCharacterStressStmt.run(newStress, code, deviceToken);
+          }
+        } catch (e) { console.error('Error applying stress consequence', e); }
+      }
       if (choice === 'health_1') {
         try {
           const player = getPlayerStmt.get(deviceToken);
@@ -984,7 +1021,7 @@ io.on('connection', (socket) => {
     });
 
     // Broadcast selection so GM and host can narrate it
-    io.to(code).emit('room:consequence_selected', { deviceToken, choices, degreeOfSuccess });
+    io.to(code).emit('room:consequence_selected', { deviceToken, choices, degreeOfSuccess, clockAdvanceError });
 
     // Sync updated character state
     const characters = getCharactersStmt.all(code);
