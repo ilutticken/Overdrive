@@ -38,8 +38,31 @@ When Advantages are granted, draw from the following list. The same Advantage ma
 4. On a Mixed Success or greater, the Effect is automatically upgraded.
 5. The player is given 1 free retry on a Critical Fail or Fail input.
 6. Critical Fail is upgraded to Fail, or Fail is upgraded to Mixed Success. This Advantage is only available when a player spends Stress to Assist; Assisting players must also select a Consequence if one is triggered.
+7. The player sees the mini-game in a frozen, non-interactive preview state for 0.5 seconds before the timer begins.
 
-1.4 Health and Status Degradation
+Note that Advantages can be stacked (except Advantage 6, which may only be stacked twice).
+
+When Complications are drawn, draw from the following list. Complications stack freely:
+
+1. −25% Timer.
+2. Smaller Target — hitboxes, success zones, and swipe vectors are reduced (specifics vary by mini-game).
+3. The timer display is hidden.
+4. A visual and/or auditory Glitch is applied to the screen during the mini-game.
+5. On a Critical Fail, Failure, or Mixed Success, the player must select one additional Consequence.
+6. One Consequence or Benefit is chosen at random rather than selected by the player.
+
+Possible future Complication (pending latency testing): The mini-game must be played using only the main TV screen for visuals, with the player's phone used for input only.
+
+1.4 Push & Assist
+Players may spend Stress to alter the conditions of a mini-game during the 10-second preparation window that opens after the GM triggers an action and before the game begins.
+
+Push (Acting Player Only): The acting player may spend 2 Stress to draw 1 additional Advantage. This may only be done once per action.
+
+Assist (Any Other Player): Any other player may spend 1 Stress to grant the acting player 1 additional Advantage. Multiple players may Assist the same action; each contribution is resolved separately. Assisting players who trigger Advantage 6 must also select a Consequence if one is triggered by the outcome.
+
+Both Push and Assist are declared during the preparation window and resolved before the mini-game launches.
+
+1.5 Health and Status Degradation
 Health: Characters maintain 3 Core Blocks of health. Failing a micro-game during dangerous or hostile encounters shatters 1 block. Reaching 0 blocks puts the character into an unconscious state.
 Screen Glitches: Status effects manifest as real physical handicaps rendered on the player's smartphone screen. Taking damage or failing certain network maneuvers injects persistent handicaps such as visual static/flicker, inverted touch directions, or deliberate input registration delays into subsequent micro-games.
 2. Action-to-Minigame Mapping

@@ -26,7 +26,7 @@ const CONSEQUENCES: ConsequenceOption[] = [
   { id: 'reduced_effect',  label: 'Reduced Effect',            description: 'Your Effect drops one step.',            minPosition: 'controlled', mechanical: false },
   { id: 'adversary_acts',  label: 'Adversary Acts',            description: 'A random adversary takes a free action.',minPosition: 'controlled', mechanical: false },
   { id: 'stress_2',        label: 'Take 2 Stress',             description: 'Mark 2 stress on your track.',           minPosition: 'risky',      mechanical: true  },
-  { id: 'clock_advance',   label: 'Advance Threat Clock',      description: 'A danger clock fills 1–2 segments.',     minPosition: 'risky',      mechanical: false },
+  { id: 'clock_advance',   label: 'Advance Threat Clock',      description: 'A Threat clock advances 1 segment.',     minPosition: 'risky',      mechanical: false },
   { id: 'lose_gear',       label: 'Lose Gear Access',          description: 'One piece of gear is unavailable this scene.', minPosition: 'risky', mechanical: false },
   { id: 'health_1',        label: 'Take 1 Health',             description: 'Mark 1 health damage.',                  minPosition: 'desperate',  mechanical: true  },
   { id: 'condition',       label: 'Gain a Condition',          description: 'The GM assigns a Condition.',            minPosition: 'desperate',  mechanical: false },

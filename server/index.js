@@ -596,12 +596,14 @@ io.on('connection', (socket) => {
     }
 
     // Ensure target character exists and is online
+    let targetName = 'Unknown';
     try {
       const targetChar = getCharacterStmt.get(uppercaseRoomCode, targetDeviceToken);
       if (!targetChar || targetChar.is_online === 0) {
         if (callback) callback({ success: false, message: 'Target player is not online or not in room' });
         return;
       }
+      targetName = targetChar.name || 'Unknown';
     } catch (e) {
       console.error('Error checking target character', e);
       if (callback) callback({ success: false, message: 'DB error' });
@@ -611,23 +613,27 @@ io.on('connection', (socket) => {
     const modifier = rollMinigameModifier(difficultyTier);
     console.log(`Minigame ${minigameType} (${difficultyTier || 'medium'}) warning triggered for ${targetDeviceToken} in room ${uppercaseRoomCode}. Modifier: ${modifier?.label || 'None'}`);
 
-    // Mark minigame active for this room
     const resolvedPosition = position || 'risky';
     const resolvedEffect   = effect   || 'standard';
 
     activeMinigames.set(uppercaseRoomCode, {
       targetDeviceToken,
+      targetName,
       minigameType,
       difficultyTier: difficultyTier || 'medium',
       modifier,
       position: resolvedPosition,
       effect:   resolvedEffect,
       skillName: resolvedSkillName,
+      hasPushed:       false,
+      assisters:       [],
+      extraAdvantages: 0,
     });
 
-    // 1. Emit warning immediately
+    // 1. Emit warning to all players
     io.to(uppercaseRoomCode).emit('room:minigame_warning', {
       targetDeviceToken,
+      targetName,
       minigameType,
       difficultyTier: difficultyTier || 'medium',
       modifier,
@@ -636,20 +642,91 @@ io.on('connection', (socket) => {
       skillName: resolvedSkillName,
     });
 
-    // 2. Wait 2.5 seconds, then emit actual start
+    // 2. After 10-second prep window, read live push/assist state and start
     setTimeout(() => {
+      const current = activeMinigames.get(uppercaseRoomCode);
+      if (!current) return;
+      const clocks = activeClocks.get(uppercaseRoomCode) || [];
       io.to(uppercaseRoomCode).emit('room:minigame_started', {
-        targetDeviceToken,
-        minigameType,
-        difficultyTier: difficultyTier || 'medium',
-        modifier,
-        position: resolvedPosition,
-        effect:   resolvedEffect,
-        skillName: resolvedSkillName,
+        targetDeviceToken: current.targetDeviceToken,
+        minigameType:      current.minigameType,
+        difficultyTier:    current.difficultyTier,
+        modifier:          current.modifier,
+        position:          current.position,
+        effect:            current.effect,
+        skillName:         current.skillName,
+        extraAdvantages:   current.extraAdvantages,
+        autoAdvanceClocksAvailable: clocks.some(c => c.autoAdvance && c.filled < c.segments),
       });
-    }, 2500);
+    }, 10000);
 
     if (callback) callback({ success: true });
+  });
+
+  // ── Push & Assist ─────────────────────────────────────────────────────────
+
+  const broadcastPushAssist = (code, minigame) => {
+    const assisterNames = minigame.assisters.map(dt => {
+      const p = getPlayerStmt.get(dt);
+      return p?.name || 'Unknown';
+    });
+    io.to(code).emit('room:push_assist_update', {
+      pusherName:  minigame.hasPushed ? (getPlayerStmt.get(minigame.targetDeviceToken)?.name || 'Unknown') : null,
+      assisters:   assisterNames,
+      totalExtra:  minigame.extraAdvantages,
+    });
+  };
+
+  socket.on('player:push', (data, callback) => {
+    const { roomCode, deviceToken } = data || {};
+    if (!roomCode || !deviceToken) return callback?.({ success: false, message: 'Missing parameters' });
+    const code = roomCode.toUpperCase();
+    const minigame = activeMinigames.get(code);
+    if (!minigame) return callback?.({ success: false, message: 'No active prep window' });
+    if (minigame.targetDeviceToken !== deviceToken) return callback?.({ success: false, message: 'Only the acting player can Push' });
+    if (minigame.hasPushed) return callback?.({ success: false, message: 'Already pushed' });
+    const player = getPlayerStmt.get(deviceToken);
+    if (!player || (player.stress ?? 8) < 2) return callback?.({ success: false, message: 'Not enough Stress to Push' });
+    try {
+      const newStress = (player.stress ?? 8) - 2;
+      updatePlayerStressStmt.run(newStress, deviceToken);
+      updateCharacterStressStmt.run(newStress, code, deviceToken);
+      minigame.hasPushed = true;
+      minigame.extraAdvantages += 1;
+      const chars = getCharactersStmt.all(code);
+      io.to(code).emit('room:state_update', { characters: chars.map(mergeCharacterRecord), roomState: getRoomStmt.get(code).state });
+      broadcastPushAssist(code, minigame);
+      if (callback) callback({ success: true });
+    } catch (e) {
+      console.error('Error processing Push', e);
+      if (callback) callback({ success: false, message: 'DB error' });
+    }
+  });
+
+  socket.on('player:assist', (data, callback) => {
+    const { roomCode, deviceToken } = data || {};
+    if (!roomCode || !deviceToken) return callback?.({ success: false, message: 'Missing parameters' });
+    const code = roomCode.toUpperCase();
+    const minigame = activeMinigames.get(code);
+    if (!minigame) return callback?.({ success: false, message: 'No active prep window' });
+    if (minigame.targetDeviceToken === deviceToken) return callback?.({ success: false, message: 'Acting player cannot Assist themselves — use Push' });
+    if (minigame.assisters.includes(deviceToken)) return callback?.({ success: false, message: 'Already assisting' });
+    const player = getPlayerStmt.get(deviceToken);
+    if (!player || (player.stress ?? 8) < 1) return callback?.({ success: false, message: 'Not enough Stress to Assist' });
+    try {
+      const newStress = (player.stress ?? 8) - 1;
+      updatePlayerStressStmt.run(newStress, deviceToken);
+      updateCharacterStressStmt.run(newStress, code, deviceToken);
+      minigame.assisters.push(deviceToken);
+      minigame.extraAdvantages += 1;
+      const chars = getCharactersStmt.all(code);
+      io.to(code).emit('room:state_update', { characters: chars.map(mergeCharacterRecord), roomState: getRoomStmt.get(code).state });
+      broadcastPushAssist(code, minigame);
+      if (callback) callback({ success: true });
+    } catch (e) {
+      console.error('Error processing Assist', e);
+      if (callback) callback({ success: false, message: 'DB error' });
+    }
   });
 
   socket.on('player:minigame_progress', (data) => {

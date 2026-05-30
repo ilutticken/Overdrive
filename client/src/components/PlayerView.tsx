@@ -75,6 +75,12 @@ export default function PlayerView() {
   const [warningType, setWarningType]   = useState<string | null>(null);
   const [warningModifier, setWarningModifier]     = useState<any>(null);
   const [warningDifficulty, setWarningDifficulty] = useState<string | null>(null);
+  const [warningTargetToken, setWarningTargetToken] = useState<string | null>(null);
+  const [warningTargetName, setWarningTargetName]   = useState<string>('');
+  const [prepCountdown, setPrepCountdown]           = useState(0);
+  const [hasPushed, setHasPushed]                   = useState(false);
+  const [hasAssisted, setHasAssisted]               = useState(false);
+  const [pushAssistData, setPushAssistData]         = useState<{pusherName:string|null;assisters:string[];totalExtra:number}|null>(null);
 
   // Flash draw
   const [flashDrawState, setFlashDrawState] = useState<'idle'|'prepare'|'go'|'results'>('idle');
@@ -116,6 +122,13 @@ export default function PlayerView() {
   }, [character?.health]);
 
   useEffect(() => () => { if (healthTimerRef.current) clearTimeout(healthTimerRef.current); }, []);
+
+  // Prep-window countdown
+  useEffect(() => {
+    if (!warningTargetToken || prepCountdown <= 0) return;
+    const id = window.setTimeout(() => setPrepCountdown(p => Math.max(0, p - 1)), 1000);
+    return () => clearTimeout(id);
+  }, [prepCountdown, warningTargetToken]);
 
   // Dossier timer (target)
   useEffect(() => {
@@ -172,26 +185,46 @@ export default function PlayerView() {
     });
 
     socket.on('room:minigame_warning', d => {
-      if (d.targetDeviceToken !== getDeviceToken()) return;
-      beep();
-      setWarningType(d.minigameType);
-      setWarningModifier(d.modifier || null);
-      setWarningDifficulty(d.difficultyTier || null);
+      const isTarget = d.targetDeviceToken === getDeviceToken();
+      setWarningTargetToken(d.targetDeviceToken);
+      setWarningTargetName(d.targetName || '');
+      setPrepCountdown(10);
+      setHasPushed(false);
+      setHasAssisted(false);
+      setPushAssistData(null);
       setActivePosition((d.position as Position) || 'risky');
       setActiveEffect((d.effect as Effect) || 'standard');
+      if (isTarget) {
+        beep();
+        setWarningType(d.minigameType);
+        setWarningModifier(d.modifier || null);
+        setWarningDifficulty(d.difficultyTier || null);
+      }
+    });
+
+    socket.on('room:push_assist_update', (d: any) => {
+      setPushAssistData({ pusherName: d.pusherName, assisters: d.assisters || [], totalExtra: d.totalExtra });
     });
 
     socket.on('room:minigame_started', d => {
+      // Clear prep state for all players
+      setWarningTargetToken(null);
+      setPrepCountdown(0);
+      setPushAssistData(null);
       if (d.targetDeviceToken !== getDeviceToken()) return;
       setWarningType(null);
       setActivePosition((d.position as Position) || 'risky');
       setActiveEffect((d.effect as Effect) || 'standard');
+      if (typeof d.autoAdvanceClocksAvailable === 'boolean') {
+        setAutoAdvanceClocksAvailable(d.autoAdvanceClocksAvailable);
+      }
       const pipRating: number = character ? (character[`skill_${d.skillName}`] ?? 1) : 1;
       const setup = computeSetup(
         d.minigameType,
         pipRating,
         d.modifier || null,
-        d.difficultyTier || 'medium'
+        d.difficultyTier || 'medium',
+        d.extraAdvantages || 0,
       );
       setActiveSetup(setup);
     });
@@ -264,7 +297,7 @@ export default function PlayerView() {
        'room:flash_draw_prepare','room:flash_draw_go','room:flash_draw_complete',
        'room:dossier_started','room:dossier_update',
        'room:glitch_applied','room:glitches_cleared','room:consequence_override',
-       'room:clocks_update'].forEach(e => socket.off(e));
+       'room:clocks_update','room:push_assist_update'].forEach(e => socket.off(e));
     };
   }, [joined, character]);
 
@@ -310,6 +343,22 @@ export default function PlayerView() {
         setCreateBackground('');
         setFreePips({});
       } else alert(res.message || 'Failed to create profile');
+    });
+  };
+
+  const handlePush = () => {
+    if (!character || hasPushed) return;
+    socket.emit('player:push', { roomCode: character.room_code, deviceToken: getDeviceToken() }, (res: any) => {
+      if (res.success) setHasPushed(true);
+      else alert(res.message || 'Cannot push');
+    });
+  };
+
+  const handleAssist = () => {
+    if (!character || hasAssisted) return;
+    socket.emit('player:assist', { roomCode: character.room_code, deviceToken: getDeviceToken() }, (res: any) => {
+      if (res.success) setHasAssisted(true);
+      else alert(res.message || 'Cannot assist');
     });
   };
 
@@ -518,14 +567,16 @@ export default function PlayerView() {
     </div>
   );
 
-  // Warning screen
+  // ── Prep window: acting player warning + Push ────────────────────────────────
   if (warningType) {
     const w = WARNING_CONFIG[warningType] || WARNING_CONFIG.overload;
+    const myStress   = character?.stress ?? 0;
+    const canPush    = !hasPushed && myStress >= 2;
     return (
-      <div className={`flex flex-col items-center justify-center min-h-screen p-6 ${w.bg} border-8 ${w.border} animate-pulse duration-75`}>
-        <h2 className={`text-5xl font-black ${w.color} mb-6 text-center drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]`}>⚠️ {w.label} ⚠️</h2>
-        <div className={`mt-12 text-xl ${w.color.replace('500','300')} tracking-[0.2em] animate-bounce`}>{w.sub}</div>
-        <div className="flex gap-3 mt-8">
+      <div className={`flex flex-col items-center justify-center min-h-screen p-6 ${w.bg} border-8 ${w.border}`}>
+        <h2 className={`text-5xl font-black ${w.color} mb-4 text-center drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]`}>⚠️ {w.label} ⚠️</h2>
+        <div className={`mt-2 text-xl ${w.color.replace('500','300')} tracking-[0.2em]`}>{w.sub}</div>
+        <div className="flex gap-3 mt-6">
           <div className={`px-4 py-1.5 rounded-full border text-sm font-black uppercase tracking-widest ${activePosition==='controlled'?'border-green-500 bg-green-950/80 text-green-300':activePosition==='desperate'?'border-red-500 bg-red-950/80 text-red-300':'border-amber-500 bg-amber-950/80 text-amber-300'}`}>
             {activePosition.toUpperCase()}
           </div>
@@ -534,12 +585,79 @@ export default function PlayerView() {
           </div>
         </div>
         {warningModifier && (
-          <div className="mt-6 max-w-2xl rounded border border-white/20 bg-black/50 px-6 py-4 text-center backdrop-blur">
+          <div className="mt-4 max-w-xs rounded border border-white/20 bg-black/50 px-4 py-3 text-center backdrop-blur">
             <div className="text-xs uppercase tracking-[0.35em] text-cyan-300">DIFFICULTY · {warningDifficulty?.toUpperCase()||'STANDARD'}</div>
-            <div className="mt-2 text-2xl font-bold text-white">{warningModifier.label}</div>
-            <div className="mt-1 text-sm text-slate-200">{warningModifier.description}</div>
+            <div className="mt-1 text-xl font-bold text-white">{warningModifier.label}</div>
+            <div className="mt-0.5 text-sm text-slate-200">{warningModifier.description}</div>
           </div>
         )}
+        {/* Push/Assist tally */}
+        {pushAssistData && pushAssistData.totalExtra > 0 && (
+          <div className="mt-4 px-4 py-2 rounded-xl bg-fuchsia-950/70 border border-fuchsia-700 text-center">
+            <div className="text-fuchsia-300 font-black text-sm">+{pushAssistData.totalExtra} ADVANTAGE{pushAssistData.totalExtra > 1 ? 'S' : ''} COMMITTED</div>
+            {pushAssistData.assisters.length > 0 && (
+              <div className="text-xs text-fuchsia-400/70 mt-0.5">Assist: {pushAssistData.assisters.join(', ')}</div>
+            )}
+          </div>
+        )}
+        {/* Push button */}
+        <button onClick={handlePush} disabled={!canPush}
+          className={`mt-5 px-8 py-3 rounded-xl font-black text-lg transition-all ${
+            hasPushed ? 'bg-slate-700 text-slate-500 cursor-default'
+            : canPush  ? 'bg-fuchsia-700 hover:bg-fuchsia-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]'
+            :            'bg-slate-800 text-slate-600 cursor-not-allowed'
+          }`}>
+          {hasPushed ? 'PUSHED ✓' : `PUSH  −2 STRESS  (${myStress} left)`}
+        </button>
+        {!hasPushed && myStress < 2 && (
+          <div className="text-xs text-slate-500 mt-2">Not enough Stress to Push</div>
+        )}
+        {/* Countdown */}
+        <div className={`mt-6 text-5xl font-black tabular-nums ${prepCountdown <= 3 ? 'text-red-400 animate-pulse' : 'text-white/40'}`}>
+          {prepCountdown}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Prep window: non-acting player Assist screen ──────────────────────────────
+  if (warningTargetToken && warningTargetToken !== getDeviceToken()) {
+    const myStress  = character?.stress ?? 0;
+    const canAssist = !hasAssisted && myStress >= 1;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 p-6 border-8 border-cyan-900">
+        <div className="text-xs font-black uppercase tracking-[0.4em] text-cyan-600 mb-2">CREW ACTION</div>
+        <div className="text-4xl font-black text-white mb-1">{warningTargetName}</div>
+        <div className="text-sm text-slate-500 mb-6 uppercase tracking-widest">is acting</div>
+        {/* Countdown */}
+        <div className={`text-7xl font-black tabular-nums mb-6 ${prepCountdown <= 3 ? 'text-red-400 animate-pulse' : 'text-cyan-400'}`}>
+          {prepCountdown}
+        </div>
+        {/* Push/assist tally */}
+        {pushAssistData && pushAssistData.totalExtra > 0 && (
+          <div className="mb-6 px-4 py-2 rounded-xl bg-fuchsia-950/70 border border-fuchsia-700 text-center">
+            <div className="text-fuchsia-300 font-black text-sm">+{pushAssistData.totalExtra} ADVANTAGE{pushAssistData.totalExtra > 1 ? 'S' : ''} COMMITTED</div>
+            {pushAssistData.pusherName && (
+              <div className="text-xs text-fuchsia-400/70 mt-0.5">Push: {pushAssistData.pusherName}</div>
+            )}
+            {pushAssistData.assisters.length > 0 && (
+              <div className="text-xs text-fuchsia-400/70">Assist: {pushAssistData.assisters.join(', ')}</div>
+            )}
+          </div>
+        )}
+        {/* Assist button */}
+        <button onClick={handleAssist} disabled={!canAssist}
+          className={`px-10 py-4 rounded-xl font-black text-xl transition-all ${
+            hasAssisted ? 'bg-slate-700 text-slate-500 cursor-default'
+            : canAssist  ? 'bg-cyan-700 hover:bg-cyan-600 text-white shadow-[0_0_20px_rgba(34,211,238,0.4)]'
+            :              'bg-slate-800 text-slate-600 cursor-not-allowed'
+          }`}>
+          {hasAssisted ? 'ASSISTING ✓' : 'ASSIST  −1 STRESS'}
+        </button>
+        <div className="text-sm text-slate-600 mt-3">
+          STRESS {myStress} / {character?.max_stress ?? 8}
+          {!hasAssisted && myStress < 1 && <span className="text-red-500/70 ml-2">· Not enough to Assist</span>}
+        </div>
       </div>
     );
   }

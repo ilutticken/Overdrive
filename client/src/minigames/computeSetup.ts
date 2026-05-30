@@ -5,11 +5,14 @@ import type {
 
 // ─── Pip-based timer and degree bounds ───────────────────────────────────────
 
-function pipDuration(base: number, pips: number): number {
-  if (pips <= 0) return Math.floor(base * 0.75);   // complication: −25%
-  if (pips === 1) return base;                       // baseline
-  if (pips === 2) return Math.floor(base * 1.25);   // advantage: +25%
-  return Math.floor(base * 1.5);                    // 2 advantages: +50%
+function pipDuration(base: number, pips: number, extraAdvantages: number = 0): number {
+  let mult: number;
+  if (pips <= 0) mult = 0.75;
+  else if (pips === 1) mult = 1.0;
+  else if (pips === 2) mult = 1.25;
+  else mult = 1.5;
+  mult += extraAdvantages * 0.25;
+  return Math.floor(base * mult);
 }
 
 function degreeBounds(pips: number): { degreeCeiling: DegreeOfSuccess; degreeFloor: DegreeOfSuccess } {
@@ -58,19 +61,21 @@ export function computeSetup(
   type: MinigameType,
   pipRating: number,
   modifier: DifficultyModifier | null,
-  difficultyTier: string
+  difficultyTier: string,
+  extraAdvantages: number = 0,
 ): MinigameSetup {
-  const pips = Math.max(0, Math.min(3, pipRating ?? 1));
+  const pips  = Math.max(0, Math.min(3, pipRating ?? 1));
+  const extra = Math.max(0, extraAdvantages);
   const base  = { modifier, difficultyTier, ...degreeBounds(pips) };
 
   switch (type) {
     case 'overload': {
-      const raw = pipDuration(4000, pips);
+      const raw = pipDuration(4000, pips, extra);
       return { type, ...base, duration: applyTimeMod(raw, modifier), targetTaps: 15 };
     }
 
     case 'deflect': {
-      const raw = pipDuration(3500, pips);
+      const raw = pipDuration(3500, pips, extra);
       return {
         type, ...base,
         duration:       applyTimeMod(raw, modifier),
@@ -87,11 +92,11 @@ export function computeSetup(
       const criticalWindow = Math.max(4,  Math.min(16,  7 * mul));
       const half = successWindow / 2;
       const targetCenter = Math.max(half, Math.min(100 - half, Math.random() * (100 - successWindow) + half));
-      return { type, ...base, duration: applyTimeMod(pipDuration(3000, pips), modifier), targetCenter, successWindow, criticalWindow };
+      return { type, ...base, duration: applyTimeMod(pipDuration(3000, pips, extra), modifier), targetCenter, successWindow, criticalWindow };
     }
 
     case 'slash': {
-      const raw = pipDuration(4000, pips);
+      const raw = pipDuration(4000, pips, extra);
       return {
         type, ...base,
         duration:    applyTimeMod(raw, modifier),
@@ -101,7 +106,7 @@ export function computeSetup(
     }
 
     case 'thread': {
-      const raw = pipDuration(4500, pips);
+      const raw = pipDuration(4500, pips, extra);
       const gates = Array.from({ length: 4 }, () => ({
         side: (Math.random() < 0.5 ? 'L' : 'R') as 'L' | 'R',
       }));
@@ -109,11 +114,11 @@ export function computeSetup(
     }
 
     case 'lock': {
-      return { type, ...base, duration: applyTimeMod(pipDuration(4000, pips), modifier), hitRadius: 12 };
+      return { type, ...base, duration: applyTimeMod(pipDuration(4000, pips, extra), modifier), hitRadius: 12 };
     }
 
     case 'chain': {
-      const raw = pipDuration(5000, pips);
+      const raw = pipDuration(5000, pips, extra);
       const sequence = Array.from({ length: 8 }, () =>
         (Math.random() < 0.5 ? 'L' : 'R')
       ) as Array<'L' | 'R'>;
@@ -121,7 +126,7 @@ export function computeSetup(
     }
 
     case 'scan': {
-      const raw = pipDuration(5000, pips);
+      const raw = pipDuration(5000, pips, extra);
       const target = randHex4();
       const codes: string[] = [target];
       while (codes.length < 8) {
@@ -133,17 +138,17 @@ export function computeSetup(
     }
 
     case 'jam': {
-      return { type, ...base, duration: applyTimeMod(pipDuration(4000, pips), modifier), hitZoneWidth: 8 };
+      return { type, ...base, duration: applyTimeMod(pipDuration(4000, pips, extra), modifier), hitZoneWidth: 8 };
     }
 
     case 'surveillance': {
-      const raw = pipDuration(4000, pips);
+      const raw = pipDuration(4000, pips, extra);
       const center = 20 + Math.random() * 60;
       return { type, ...base, duration: applyTimeMod(raw, modifier), blindSpot: { center, width: 14 } };
     }
 
     case 'doctor': {
-      const stepDuration = pipDuration(3500, pips);
+      const stepDuration = pipDuration(3500, pips, extra);
       const woundTypes = ['laceration', 'fracture', 'trauma'] as const;
       const woundType  = woundTypes[Math.floor(Math.random() * woundTypes.length)];
       const steps      = WOUND_STEPS[woundType];

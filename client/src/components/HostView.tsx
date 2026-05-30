@@ -78,6 +78,8 @@ export default function HostView() {
 
   const [flashDrawState, setFlashDrawState]         = useState<'idle'|'prepare'|'go'|'results'>('idle');
   const [initiativeQueue, setInitiativeQueue]       = useState<any[]>([]);
+  const [prepCountdown, setPrepCountdown]           = useState(0);
+  const [pushAssistData, setPushAssistData]         = useState<{pusherName:string|null;assisters:string[];totalExtra:number}|null>(null);
   const [combatState, setCombatState]               = useState<{queue:any[];activeIndex:number}|null>(null);
 
   const [result, setResult] = useState<{show:boolean;success:boolean;degreeOfSuccess?:string;finalDisposition?:number;modifier?:any;difficultyTier?:string}>({show:false,success:false});
@@ -152,8 +154,9 @@ export default function HostView() {
 
     socket.on('room:state_update',        d => { setCharacters(d.characters); setRoomState(d.roomState); });
     socket.on('room:gm_presence',         d => setGmOnline(d.gmOnline));
-    socket.on('room:minigame_warning',    d => { beep(); setWarningTarget(d.targetDeviceToken); setActiveType(d.minigameType); setActiveDifficulty(d.difficultyTier||null); setActiveModifier(d.modifier||null); setActivePosition(d.position||null); setActiveEffect(d.effect||null); setResult({show:false,success:false}); });
-    socket.on('room:minigame_started',    d => { setWarningTarget(null); setActiveTarget(d.targetDeviceToken); setActiveType(d.minigameType); setActiveDifficulty(d.difficultyTier||null); setActiveModifier(d.modifier||null); setActivePosition(d.position||null); setActiveEffect(d.effect||null); setMinigameProgress(0); setResult({show:false,success:false}); });
+    socket.on('room:minigame_warning',    d => { beep(); setWarningTarget(d.targetDeviceToken); setActiveType(d.minigameType); setActiveDifficulty(d.difficultyTier||null); setActiveModifier(d.modifier||null); setActivePosition(d.position||null); setActiveEffect(d.effect||null); setResult({show:false,success:false}); setPrepCountdown(10); setPushAssistData(null); });
+    socket.on('room:minigame_started',    d => { setWarningTarget(null); setPrepCountdown(0); setActiveTarget(d.targetDeviceToken); setActiveType(d.minigameType); setActiveDifficulty(d.difficultyTier||null); setActiveModifier(d.modifier||null); setActivePosition(d.position||null); setActiveEffect(d.effect||null); setMinigameProgress(0); setResult({show:false,success:false}); });
+    socket.on('room:push_assist_update',  d => setPushAssistData(d));
     socket.on('room:clocks_update',       d => setClocks(d.clocks || []));
     socket.on('room:minigame_progress',   d => { if (d.progress) setMinigameProgress(d.progress); });
     socket.on('room:dossier_started',     d => { beep(); setWarningTarget(null); setActiveDossierTarget(d.targetDeviceToken); setDossierDisposition(d.disposition); setResult({show:false,success:false}); });
@@ -184,9 +187,17 @@ export default function HostView() {
       ['room:state_update','room:gm_presence','room:minigame_warning','room:minigame_started',
        'room:minigame_progress','room:dossier_started','room:dossier_update','room:minigame_result',
        'room:flash_draw_prepare','room:flash_draw_go','room:flash_draw_results',
-       'room:flash_draw_complete','room:combat_queue_update','room:clocks_update'].forEach(e => socket.off(e));
+       'room:flash_draw_complete','room:combat_queue_update','room:clocks_update',
+       'room:push_assist_update'].forEach(e => socket.off(e));
     };
   }, []);
+
+  // Prep-window countdown mirror
+  useEffect(() => {
+    if (!warningTarget || prepCountdown <= 0) return;
+    const id = window.setTimeout(() => setPrepCountdown(p => Math.max(0, p - 1)), 1000);
+    return () => clearTimeout(id);
+  }, [prepCountdown, warningTarget]);
 
   useEffect(() => { if (!isReady) setRecentResults([]); }, [isReady]);
 
@@ -253,7 +264,21 @@ export default function HostView() {
         <div className={`w-full max-w-6xl flex flex-col items-center animate-pulse duration-75 ${warnDisplay.color}`}>
           <div className={`text-8xl font-black mb-8 tracking-[0.1em] ${warnDisplay.glow}`}>⚠️ {warnDisplay.label} ⚠️</div>
           <h3 className="text-5xl text-white mt-4 tracking-widest">TARGET LOCKED: <span className={`font-bold ${warnDisplay.color}`}>{warningChar.name}</span></h3>
-          <div className={`mt-12 text-3xl font-mono tracking-[0.3em] animate-bounce ${warnDisplay.color.replace('500','300')}`}>{warnDisplay.sub}</div>
+          <div className={`mt-8 text-3xl font-mono tracking-[0.3em] animate-bounce ${warnDisplay.color.replace('500','300')}`}>{warnDisplay.sub}</div>
+          {/* Prep countdown */}
+          <div className={`mt-6 text-8xl font-black tabular-nums ${prepCountdown <= 3 ? 'text-red-400 animate-pulse' : 'text-white/30'}`}>
+            {prepCountdown}
+          </div>
+          {/* Push/assist tally */}
+          {pushAssistData && pushAssistData.totalExtra > 0 && (
+            <div className="mt-4 px-6 py-3 rounded-2xl bg-fuchsia-950/70 border border-fuchsia-700 text-center">
+              <div className="text-fuchsia-300 font-black text-2xl">+{pushAssistData.totalExtra} ADVANTAGE{pushAssistData.totalExtra > 1 ? 'S' : ''} COMMITTED</div>
+              <div className="flex gap-4 justify-center mt-1 text-sm text-fuchsia-400/70">
+                {pushAssistData.pusherName && <span>PUSH: {pushAssistData.pusherName}</span>}
+                {pushAssistData.assisters.length > 0 && <span>ASSIST: {pushAssistData.assisters.join(', ')}</span>}
+              </div>
+            </div>
+          )}
           {(activePosition || activeEffect) && (
             <div className="flex gap-4 mt-8">
               {activePosition && (
